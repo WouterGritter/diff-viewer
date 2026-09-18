@@ -1,4 +1,4 @@
-import { fetchGithubDirectory, fetchGithubFileText, type GithubDiff } from "$lib/github-api";
+import { fetchGithubDirectory, fetchGithubFileText, type GithubDiff, type GithubDirectoryEntry } from "$lib/github-api";
 import type { FileDetails } from "$lib/file-details";
 
 /**
@@ -76,6 +76,46 @@ async function cachedFileText(
     console.warn("Failed to cache file", e);
   }
   return text;
+}
+
+/**
+ * Directory listings go through the GitHub API, which has a low unauthenticated rate limit, so
+ * they are cached permanently for immutable (commit sha) refs.
+ */
+async function cachedDirectory(
+  token: string | null,
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+): Promise<GithubDirectoryEntry[]> {
+  const cacheable = SHA_REGEX.test(ref) && "caches" in globalThis;
+  const cacheUrl = `https://diffs.dev/cache/github-dir/${owner}/${repo}/${ref}/${path}`;
+  const cache = cacheable ? await caches.open(RAW_CACHE_NAME).catch(() => null) : null;
+  const cached = await cache?.match(cacheUrl);
+  if (cached) {
+    return (await cached.json()) as GithubDirectoryEntry[];
+  }
+  let entries: GithubDirectoryEntry[];
+  try {
+    entries = await fetchGithubDirectory(token, owner, repo, path, ref);
+  } catch (e) {
+    if (e instanceof Error && /rate limit/i.test(e.message)) {
+      throw new Error(
+        "GitHub API rate limit exceeded while listing patch directories. Sign in to GitHub (Open dialog) for a higher limit, or try again later.",
+        { cause: e },
+      );
+    }
+    throw e;
+  }
+  // Only keep what is needed, listings of large directories are sizeable
+  const slim = entries.map(({ name, path, type, size }) => ({ name, path, type, size }));
+  try {
+    await cache?.put(cacheUrl, new Response(JSON.stringify(slim), { headers: { "Content-Type": "application/json" } }));
+  } catch (e) {
+    console.warn("Failed to cache directory listing", e);
+  }
+  return slim;
 }
 
 /** Splits a git-format patch into its per-file sections, keyed by the target (or removed) path */
@@ -194,7 +234,7 @@ export class PatchChainBuilder {
    * forks may add others (e.g. `base`), which are assumed to apply in alphabetical order.
    */
   private async featureDirectories(layer: PatchLayer): Promise<string[]> {
-    const entries = await fetchGithubDirectory(this.token, layer.owner, layer.repo, layer.root, layer.ref);
+    const entries = await cachedDirectory(this.token, layer.owner, layer.repo, layer.root, layer.ref);
     const dirs = new Set(
       entries.filter((e) => e.type === "dir" && !NON_FEATURE_DIRS.has(e.name)).map((e) => `${layer.root}/${e.name}`),
     );
@@ -211,7 +251,7 @@ export class PatchChainBuilder {
   private async loadFeaturePatches(layer: PatchLayer): Promise<FeaturePatch[]> {
     const names = new Set<string>();
     for (const dir of await this.featureDirectories(layer)) {
-      const entries = await fetchGithubDirectory(this.token, layer.owner, layer.repo, dir, layer.ref);
+      const entries = await cachedDirectory(this.token, layer.owner, layer.repo, dir, layer.ref);
       for (const e of entries) if (e.type === "file" && e.name.endsWith(".patch")) names.add(e.path);
       if (this.isLastLayer(layer)) {
         // Feature patches removed by the viewed diff no longer exist at head but still apply on the old side
