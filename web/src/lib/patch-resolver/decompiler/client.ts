@@ -1,3 +1,4 @@
+import { ZipReader } from "../zip";
 import { DEFAULT_DECOMPILER_OPTIONS, VINEFLOWER_VERSION, type WorkerRequest, type WorkerResponse } from "./protocol";
 
 const DECOMPILED_CACHE_NAME = "diffs-decompiled-cache-v1";
@@ -74,6 +75,7 @@ export class Decompiler {
   private readonly cacheKey: string;
   private readonly inFlight = new Map<string, Promise<string>>();
   private cache: Cache | null = null;
+  private classNames = new Set<string>();
   classCount = 0;
 
   private constructor(cacheKey: string) {
@@ -82,6 +84,9 @@ export class Decompiler {
 
   static async create(jar: Uint8Array, cacheKey: string, options: DecompilerOptions = {}): Promise<Decompiler> {
     const decompiler = new Decompiler(cacheKey);
+    for (const name of ZipReader.fromBytes(jar).entries.keys()) {
+      if (name.endsWith(".class")) decompiler.classNames.add(name.slice(0, -".class".length));
+    }
     const threads = Math.max(1, Math.min(options.threads ?? navigator.hardwareConcurrency ?? 2, 4));
     const decompilerOptions = options.decompilerOptions ?? DEFAULT_DECOMPILER_OPTIONS;
     if ("caches" in globalThis) {
@@ -103,6 +108,11 @@ export class Decompiler {
       throw e;
     }
     return decompiler;
+  }
+
+  /** Whether the jar contains the given class (slash separated, without `.class`) */
+  hasClass(className: string): boolean {
+    return this.classNames.has(className);
   }
 
   private cacheUrl(className: string): string {

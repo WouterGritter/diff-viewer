@@ -223,3 +223,41 @@ export async function fetchGithubFileText(
   const blob = await fetchGithubFile(token, owner, repo, path, ref);
   return await blob.text();
 }
+
+export interface GithubDirectoryEntry {
+  name: string;
+  path: string;
+  type: "file" | "dir" | string;
+  size: number;
+}
+
+export async function fetchGithubDirectory(
+  token: string | null,
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+): Promise<GithubDirectoryEntry[]> {
+  const opts: RequestInit = {
+    headers: {
+      Accept: "application/vnd.github+json",
+    },
+  };
+  injectOptionalToken(token, opts);
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
+    opts,
+  );
+  if (response.status === 404) {
+    return [];
+  }
+  if (!response.ok) {
+    throw Error(`Failed to list directory ${path}@${ref} (${response.status}): ${await response.text()}`);
+  }
+  const data = await response.json();
+  if (!Array.isArray(data)) {
+    throw Error(`${path}@${ref} is not a directory`);
+  }
+  return data as GithubDirectoryEntry[];
+}

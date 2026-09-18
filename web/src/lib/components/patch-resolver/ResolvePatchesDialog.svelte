@@ -76,12 +76,12 @@
         }}
       >
         <p class="text-sm text-em-med">
-          This diff contains {viewer.nestedPatchCount}
-          <code class="rounded-sm bg-neutral-2 px-1 py-0.5">.java.patch</code>
-          {viewer.nestedPatchCount === 1 ? "file" : "files"}: patches that modify Java source which is not part of the
-          repository. The jar those patches target can be downloaded and decompiled locally in your browser (using
-          Vineflower) to show what the change actually does to the source, with surrounding code for context. Nothing is
-          uploaded or redistributed; the jar is fetched straight from its origin into your browser.
+          This diff contains {viewer.nestedPatchCount} patch {viewer.nestedPatchCount === 1 ? "file" : "files"}
+          (<code class="rounded-sm bg-neutral-2 px-1 py-0.5">.java.patch</code> or feature patches) that modify Java source
+          which is not part of the repository. The jar those patches target can be downloaded and decompiled locally in your
+          browser (using Vineflower), and the repository's other patches applied in order, to show what the change actually
+          does to the source, with surrounding code for context. Nothing is uploaded or redistributed; the jar is fetched
+          straight from its origin into your browser.
         </p>
 
         <section class="flex flex-col gap-2">

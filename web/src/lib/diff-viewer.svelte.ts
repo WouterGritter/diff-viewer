@@ -242,7 +242,7 @@ export class MultiFileDiffViewerState {
   rawFileDetails: FileDetails[] = $state([]); // Read-only state, as loaded from the diff source
   // Nested patch files (e.g. Paper's *.java.patch) can be resolved against a decompiled jar,
   // in which case their diffs are substituted here
-  readonly patchResolver = new PatchResolverState();
+  readonly patchResolver = new PatchResolverState((count) => this.allocateFileStates(count));
   readonly fileDetails: FileDetails[] = $derived(this.patchResolver.applyTo(this.rawFileDetails));
   readonly nestedPatchCount = $derived(PatchResolverState.countNestedPatches(this.rawFileDetails));
   readonly filteredFileDetails = $derived.by(() => {
@@ -365,6 +365,15 @@ export class MultiFileDiffViewerState {
         }
       }
     }
+  }
+
+  /** Reserves file states for additional files (resolved patch targets) and returns the first new index */
+  private allocateFileStates(count: number): number {
+    const first = this.fileStates.length;
+    for (let i = 0; i < count; i++) {
+      this.fileStates.push({ collapsed: false, checked: false });
+    }
+    return first;
   }
 
   /** Switches between the raw patch diffs and the resolved diffs from the patch resolver */

@@ -43,6 +43,9 @@
       <Popover.Portal>
         <Popover.Content class="z-50 mx-2 max-w-80 rounded-sm border bg-neutral px-3 py-2 text-sm shadow-sm">
           <p class="mb-1 font-semibold">Resolved against {summary.jarLabel}</p>
+          {#if summary.layers.length > 1}
+            <p class="mb-1 text-em-med">Patch layers: {summary.layers.join(" → ")}</p>
+          {/if}
           <ul class="text-em-med">
             <li>{stats.ok} resolved</li>
             {#if stats.partial > 0}<li>{stats.partial} partially resolved (some hunks could not be placed)</li>{/if}
