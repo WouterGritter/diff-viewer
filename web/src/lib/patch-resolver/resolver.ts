@@ -1,35 +1,55 @@
 import { createTwoFilesPatch } from "diff";
-import { makeTextDetails, type FileDetails, type TextFileDetails } from "$lib/file-details";
+import { makeTextDetails, type FileDetails, type FileStatus, type TextFileDetails } from "$lib/file-details";
 import type { GithubDiff } from "$lib/github-api";
 import { fetchGithubFileText } from "$lib/github-api";
-import { parseUnifiedPatch, type UnifiedPatch } from "./unified-patch";
-import { fuzzyApply, type FuzzyApplyResult } from "./fuzzy-apply";
+import { parseUnifiedPatch } from "./unified-patch";
+import { fuzzyApply } from "./fuzzy-apply";
 import { Decompiler } from "./decompiler/client";
-import { resolveJar, type JarProgress, type JarSource, type ResolvedJar } from "./jar-source";
-import { isNestedJavaPatch } from "./nested-patch";
+import { resolveJar, type JarProgress, type JarSource } from "./jar-source";
+import {
+  isFeaturePatchPath,
+  isResolvablePatch,
+  isSourcePatchPath,
+  PatchChainBuilder,
+  patchesRootOf,
+  sourcePatchTarget,
+  splitFeaturePatch,
+  type ChainStep,
+  type OuterPatchChange,
+} from "./patch-chain";
 
-export type ResolvedFileStatus = "ok" | "partial" | "unchanged" | "failed" | "skipped";
+export type ResolvedStatus = "ok" | "partial" | "unchanged" | "failed" | "skipped";
 
-export interface ResolvedFile {
-  /** Index of the original file in the viewer */
+/** One resolved target file (a class) of a patch file in the viewed diff */
+export interface ResolvedEntry {
+  /** Index in the viewer; equals the outer file's index when it replaces it one-to-one, assigned later otherwise */
   index: number;
-  status: ResolvedFileStatus;
-  /** Replacement details showing the diff of the actual patched source (absent when failed/skipped) */
-  details?: TextFileDetails;
-  /** Fully qualified class name (slash separated) the nested patch targets */
-  className?: string;
-  /** Human readable notes: rejected hunks, fuzzy placements, reasons for skipping */
+  outerIndex: number;
+  /** Path of the target inside the patched source tree, e.g. net/minecraft/server/Main.java */
+  target: string;
+  status: ResolvedStatus;
   notes: string[];
+  details?: TextFileDetails;
+}
+
+/** Resolution result for one patch file in the viewed diff */
+export interface ResolvedFile {
+  index: number;
+  status: ResolvedStatus;
+  notes: string[];
+  entries: ResolvedEntry[];
 }
 
 export interface ResolveSummary {
   jarLabel: string;
+  /** Labels of the patch layers that were applied, upstream first */
+  layers: string[];
   contextLines: number;
   files: ResolvedFile[];
 }
 
 export interface ResolveProgress {
-  stage: "jar" | "decompiler" | "files";
+  stage: "jar" | "patches" | "decompiler" | "files";
   message: string;
   /** 0-1 when known */
   fraction?: number;
@@ -42,28 +62,6 @@ export interface ResolveOptions {
   onProgress: (progress: ResolveProgress) => void;
   signal?: AbortSignal;
 }
-
-function nestedClassName(patch: UnifiedPatch | null): string | null {
-  const name = patch?.newFileName ?? patch?.oldFileName;
-  if (!name || !name.endsWith(".java")) return null;
-  return name.slice(0, -".java".length);
-}
-
-function describeApply(label: string, result: FuzzyApplyResult, notes: string[]) {
-  const fuzzy = result.hunks.filter((h) => h.status === "fuzzy").length;
-  if (result.rejected > 0) {
-    const which = result.hunks
-      .map((h, i) => (h.status === "rejected" ? i + 1 : null))
-      .filter((i) => i !== null)
-      .join(", ");
-    notes.push(`${label}: ${result.rejected} of ${result.hunks.length} hunks could not be placed (hunk ${which})`);
-  }
-  if (fuzzy > 0) {
-    notes.push(`${label}: ${fuzzy} of ${result.hunks.length} hunks placed with fuzzy context matching`);
-  }
-}
-
-type PatchTexts = { oldText: string | null; newText: string | null } | { error: string };
 
 async function mapConcurrent<T, R>(
   items: T[],
@@ -86,8 +84,14 @@ function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new Error("Cancelled");
 }
 
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 /**
- * Resolves nested patch files in a GitHub-sourced diff against the decompiled classes of a jar.
+ * Resolves patch files in a GitHub-sourced diff against the source they target: the classes of a
+ * jar, decompiled in the browser, with all patches of the repository (and its upstream) that
+ * precede or follow the changed patch applied on top.
  */
 export async function resolveNestedPatches(
   token: string | null,
@@ -96,13 +100,23 @@ export async function resolveNestedPatches(
   options: ResolveOptions,
 ): Promise<ResolveSummary> {
   const { onProgress, signal } = options;
-  const candidates = files.filter(isNestedJavaPatch);
+  const candidates = files.filter(isResolvablePatch) as TextFileDetails[];
   if (candidates.length === 0) {
-    throw new Error("The loaded diff does not contain any .java.patch files.");
+    throw new Error("The loaded diff does not contain any resolvable patch files.");
   }
 
-  // Fetch the full old/new contents of every nested patch file while the jar downloads
-  const patchTexts = mapConcurrent(candidates, 6, async (file): Promise<PatchTexts> => {
+  // Start the (large) jar download right away, everything else happens in the meantime
+  const jarPromise = resolveJar(options.jar, (p: JarProgress) => {
+    onProgress({ stage: "jar", message: p.message, fraction: p.fraction });
+  }).catch((e) => {
+    throw new Error("Failed to obtain the jar to decompile", { cause: e });
+  });
+  jarPromise.catch(() => {}); // handled below
+
+  // Old and new contents of the changed patch files
+  const changes = new Map<string, OuterPatchChange>();
+  const fetchErrors = new Map<number, string>();
+  await mapConcurrent(candidates, 6, async (file) => {
     try {
       const oldText =
         file.status === "added"
@@ -112,27 +126,32 @@ export async function resolveNestedPatches(
         file.status === "removed"
           ? null
           : await fetchGithubFileText(token, github.owner, github.repo, file.toFile, github.head);
-      return { oldText, newText };
+      changes.set(file.toFile, { oldText, newText });
+      if (file.fromFile !== file.toFile) changes.set(file.fromFile, { oldText, newText: null });
     } catch (e) {
-      return { error: e instanceof Error ? e.message : String(e) };
+      fetchErrors.set(file.index, errorMessage(e));
     }
   });
-
-  let jar: ResolvedJar;
-  try {
-    jar = await resolveJar(options.jar, (p: JarProgress) => {
-      onProgress({ stage: "jar", message: p.message, fraction: p.fraction });
-    });
-  } catch (e) {
-    throw new Error("Failed to obtain the jar to decompile", { cause: e });
-  }
   throwIfAborted(signal);
 
+  const root = candidates.map((f) => patchesRootOf(f.toFile)).find((r) => r !== null) ?? null;
+  if (root === null) {
+    throw new Error("Could not determine the patches directory of the repository.");
+  }
+  onProgress({ stage: "patches", message: "Discovering patch layers" });
+  const layers = await PatchChainBuilder.discoverLayers(token, github, root);
+  const chain = new PatchChainBuilder(token, layers, changes, (message) => {
+    onProgress({ stage: "patches", message });
+  });
+  await Promise.all(layers.map((layer) => chain.featurePatches(layer)));
+  throwIfAborted(signal);
+
+  const jar = await jarPromise;
+  throwIfAborted(signal);
   onProgress({ stage: "decompiler", message: "Starting decompiler" });
   const decompiler = await Decompiler.create(jar.bytes, jar.cacheKey);
   try {
     throwIfAborted(signal);
-    const texts = await patchTexts;
     let done = 0;
     const report = () => {
       onProgress({
@@ -143,79 +162,194 @@ export async function resolveNestedPatches(
     };
     report();
 
-    const resolved = await mapConcurrent(candidates, 4, async (file, i) => {
-      const text = texts[i];
-      const result: ResolvedFile =
-        "error" in text
-          ? { index: file.index, status: "failed", notes: [`Could not fetch the patch file: ${text.error}`] }
-          : await resolveFile(file, text.oldText, text.newText, decompiler, options.contextLines);
+    const resolved = await mapConcurrent(candidates, 4, async (file) => {
+      const fetchError = fetchErrors.get(file.index);
+      const result: ResolvedFile = fetchError
+        ? { index: file.index, status: "failed", notes: [`Could not fetch the patch file: ${fetchError}`], entries: [] }
+        : await resolveOuterFile(file, root, changes, chain, decompiler, options.contextLines);
       done++;
       report();
       throwIfAborted(signal);
       return result;
     });
 
-    return { jarLabel: jar.label, contextLines: options.contextLines, files: resolved };
+    return {
+      jarLabel: jar.label,
+      layers: layers.map((l) => l.label),
+      contextLines: options.contextLines,
+      files: resolved,
+    };
   } finally {
     decompiler.close();
   }
 }
 
-async function resolveFile(
+function withoutIndexLines(section: string): string {
+  return section.replace(/^index [0-9a-f]+\.\.[0-9a-f]+.*$/gm, "");
+}
+
+/** Targets of a feature patch whose sections differ between the old and new version */
+function changedFeatureTargets(change: OuterPatchChange): string[] {
+  const oldSections = change.oldText === null ? new Map<string, string>() : splitFeaturePatch(change.oldText);
+  const newSections = change.newText === null ? new Map<string, string>() : splitFeaturePatch(change.newText);
+  const targets = new Set<string>();
+  for (const [target, section] of newSections) {
+    const old = oldSections.get(target);
+    if (old === undefined || withoutIndexLines(old) !== withoutIndexLines(section)) targets.add(target);
+  }
+  for (const target of oldSections.keys()) {
+    if (!newSections.has(target)) targets.add(target);
+  }
+  return Array.from(targets).sort();
+}
+
+async function resolveOuterFile(
   file: TextFileDetails,
-  oldText: string | null,
-  newText: string | null,
+  root: string,
+  changes: Map<string, OuterPatchChange>,
+  chain: PatchChainBuilder,
   decompiler: Decompiler,
   contextLines: number,
 ): Promise<ResolvedFile> {
-  const notes: string[] = [];
-  const oldPatch = oldText !== null ? parseUnifiedPatch(oldText) : null;
-  const newPatch = newText !== null ? parseUnifiedPatch(newText) : null;
-  const className = nestedClassName(newPatch) ?? nestedClassName(oldPatch);
-  if (!className) {
-    return { index: file.index, status: "skipped", notes: ["Not a unified diff of a .java file"] };
+  const path = file.toFile || file.fromFile;
+  const change = changes.get(file.toFile) ?? changes.get(file.fromFile);
+  if (!change) {
+    return { index: file.index, status: "failed", notes: ["Patch contents unavailable"], entries: [] };
   }
-
-  let baseSource: string;
-  try {
-    baseSource = await decompiler.decompile(className);
-  } catch (e) {
+  if (patchesRootOf(path) !== root) {
     return {
       index: file.index,
       status: "skipped",
-      className,
-      notes: [`Could not decompile ${className}: ${e instanceof Error ? e.message : String(e)}`],
+      notes: ["Patch is outside the detected patches directory"],
+      entries: [],
     };
+  }
+
+  let targets: { target: string; oneToOne: boolean }[];
+  if (isSourcePatchPath(path)) {
+    const target = sourcePatchTarget(root, path);
+    if (!target) {
+      return { index: file.index, status: "skipped", notes: ["Not a sources patch"], entries: [] };
+    }
+    targets = [{ target, oneToOne: true }];
+  } else if (isFeaturePatchPath(path)) {
+    targets = changedFeatureTargets(change).map((target) => ({ target, oneToOne: false }));
+    if (targets.length === 0) {
+      return {
+        index: file.index,
+        status: "unchanged",
+        notes: ["The change does not alter any of the patch's file sections"],
+        entries: [],
+      };
+    }
+  } else {
+    return { index: file.index, status: "skipped", notes: ["Unrecognized patch file"], entries: [] };
+  }
+
+  const entries = await mapConcurrent(targets, 2, async ({ target, oneToOne }) => {
+    const entry = await resolveTarget(file, target, chain, decompiler, contextLines);
+    entry.index = oneToOne ? file.index : -1;
+    return entry;
+  });
+
+  const notes: string[] = [];
+  let status: ResolvedStatus = "ok";
+  if (entries.every((e) => e.status === "skipped" || e.status === "failed")) status = "skipped";
+  else if (entries.some((e) => e.status === "partial")) status = "partial";
+  else if (entries.every((e) => e.status === "unchanged")) status = "unchanged";
+  if (targets.length > 1) notes.push(`${targets.length} files changed by this patch`);
+  return { index: file.index, status, notes, entries };
+}
+
+async function resolveTarget(
+  file: TextFileDetails,
+  target: string,
+  chain: PatchChainBuilder,
+  decompiler: Decompiler,
+  contextLines: number,
+): Promise<ResolvedEntry> {
+  const notes: string[] = [];
+  const base = (): ResolvedEntry => ({ index: -1, outerIndex: file.index, target, status: "skipped", notes });
+
+  let steps: ChainStep[];
+  try {
+    steps = await chain.chainFor(target);
+  } catch (e) {
+    notes.push(`Could not collect the patches for ${target}: ${errorMessage(e)}`);
+    return { ...base(), status: "failed" };
+  }
+
+  let baseSource: string;
+  const className = target.endsWith(".java") ? target.slice(0, -".java".length) : null;
+  if (className && decompiler.hasClass(className)) {
+    try {
+      baseSource = await decompiler.decompile(className);
+    } catch (e) {
+      notes.push(`Could not decompile ${className}: ${errorMessage(e)}`);
+      return { ...base(), status: "failed" };
+    }
+  } else if (steps.length > 0 && createsFile(steps[0])) {
+    baseSource = "";
+  } else {
+    notes.push(className ? "Class not found in the jar" : "Not a Java source file");
+    return base();
   }
   const baseLines = baseSource.split("\n");
 
-  let oldLines = baseLines;
-  let newLines = baseLines;
-  let status: ResolvedFileStatus = "ok";
-  if (oldPatch) {
-    const result = fuzzyApply(baseLines, oldPatch);
-    describeApply("Old patch", result, notes);
-    if (result.rejected > 0) status = "partial";
-    oldLines = result.lines;
+  let status: ResolvedStatus = "ok";
+  const sides: Record<"old" | "new", string[]> = { old: baseLines, new: baseLines };
+  const fuzzyCounts = { old: 0, new: 0 };
+  for (const side of ["old", "new"] as const) {
+    let lines = baseLines;
+    for (const step of steps) {
+      const text = step[side];
+      if (text === null) continue;
+      const result = fuzzyApply(lines, parseUnifiedPatch(text));
+      lines = result.lines;
+      fuzzyCounts[side] += result.hunks.filter((h) => h.status === "fuzzy").length;
+      if (result.rejected > 0) {
+        status = "partial";
+        const which = result.hunks
+          .map((h, i) => (h.status === "rejected" ? i + 1 : null))
+          .filter((i) => i !== null)
+          .join(", ");
+        notes.push(
+          `${step.label} (${side}): ${result.rejected} of ${result.hunks.length} hunks could not be placed (hunk ${which})`,
+        );
+      }
+    }
+    sides[side] = lines;
   }
-  if (newPatch) {
-    const result = fuzzyApply(baseLines, newPatch);
-    describeApply("New patch", result, notes);
-    if (result.rejected > 0) status = "partial";
-    newLines = result.lines;
+  if (fuzzyCounts.old + fuzzyCounts.new > 0) {
+    notes.push(`${fuzzyCounts.old} (old) / ${fuzzyCounts.new} (new) hunks placed with fuzzy context matching`);
+  }
+  if (steps.length > 1) {
+    notes.push(`Applied on top of: ${steps.map((s) => s.label).join(", ")}`);
   }
 
-  const nestedPath = `${className}.java`;
-  const oldSource = oldLines.join("\n");
-  const newSource = newLines.join("\n");
+  const oldSource = sides.old.join("\n");
+  const newSource = sides.new.join("\n");
   if (oldSource === newSource) {
     status = "unchanged";
-    notes.push("The change to the patch file does not alter the resulting source");
+    notes.push("The change to the patch does not alter the resulting source");
   }
-  const patchText = createTwoFilesPatch(nestedPath, nestedPath, oldSource, newSource, undefined, undefined, {
+
+  const oneToOne = isSourcePatchPath(file.toFile || file.fromFile);
+  const displayPath = oneToOne ? file.toFile : `${file.toFile || file.fromFile}/${target}`;
+  const fromPath = oneToOne ? file.fromFile : displayPath;
+  let fileStatus: FileStatus = oneToOne ? file.status : "modified";
+  if (!oneToOne) {
+    if (oldSource === "" && newSource !== "") fileStatus = "added";
+    else if (newSource === "" && oldSource !== "") fileStatus = "removed";
+  }
+  const patchText = createTwoFilesPatch(target, target, oldSource, newSource, undefined, undefined, {
     context: contextLines,
   });
-  const details = makeTextDetails(file.fromFile, file.toFile, file.status, patchText);
-  details.index = file.index;
-  return { index: file.index, status, details, className, notes };
+  const details = makeTextDetails(fromPath, displayPath, fileStatus, patchText);
+  return { ...base(), status, details };
+}
+
+function createsFile(step: ChainStep): boolean {
+  const text = step.new ?? step.old;
+  return text !== null && parseUnifiedPatch(text).oldFileName === null;
 }

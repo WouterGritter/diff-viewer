@@ -1,6 +1,6 @@
 <script lang="ts">
   import { type FileDetails } from "$lib/file-details";
-  import type { ResolvedFile } from "$lib/patch-resolver/resolver";
+  import type { ResolvedInfo } from "$lib/components/patch-resolver/index.svelte";
 
   import DiffStats from "$lib/components/diff/DiffStats.svelte";
   import LabeledCheckbox from "$lib/components/LabeledCheckbox.svelte";
@@ -73,24 +73,29 @@
   {/if}
 {/snippet}
 
-{#snippet resolvedBadge(info: ResolvedFile)}
-  {@const label = showingResolved
-    ? info.status === "partial"
-      ? "Partially resolved"
-      : info.status === "unchanged"
-        ? "No source change"
-        : "Resolved"
-    : info.details
-      ? "Raw patch"
-      : info.status === "skipped"
-        ? "Not resolved"
-        : "Failed"}
+{#snippet resolvedBadge(info: ResolvedInfo)}
+  {@const status = info.kind === "entry" ? info.entry.status : info.file.status}
+  {@const notes = info.kind === "entry" ? [...info.entry.notes, ...info.file.notes] : info.file.notes}
+  {@const label =
+    info.kind === "entry"
+      ? status === "partial"
+        ? "Partially resolved"
+        : status === "unchanged"
+          ? "No source change"
+          : "Resolved"
+      : viewer.patchResolver.hasResolvedDiff(file)
+        ? "Raw patch"
+        : status === "unchanged"
+          ? "No source change"
+          : status === "skipped"
+            ? "Not resolved"
+            : "Failed"}
   <Popover.Root>
     <Popover.Trigger
       title="Patch resolution details"
       class={[
         "flex items-center gap-1 rounded-sm px-1.5 whitespace-nowrap",
-        info.status === "partial" || info.status === "failed" ? "bg-yellow-500/20" : "bg-neutral-3",
+        status === "partial" || status === "failed" ? "bg-yellow-500/20" : "bg-neutral-3",
       ]}
       onclick={(e) => e.stopPropagation()}
     >
@@ -99,12 +104,12 @@
     </Popover.Trigger>
     <Popover.Portal>
       <Popover.Content class="z-3 max-w-96 rounded-sm border bg-neutral px-3 py-2 text-sm shadow-sm">
-        {#if info.className}
-          <p class="mb-1 font-mono text-xs break-all">{info.className}.java</p>
+        {#if info.kind === "entry"}
+          <p class="mb-1 font-mono text-xs break-all">{info.entry.target}</p>
         {/if}
-        {#if info.notes.length > 0}
+        {#if notes.length > 0}
           <ul class="list-disc ps-4 text-em-med">
-            {#each info.notes as note, i (i)}
+            {#each notes as note, i (i)}
               <li>{note}</li>
             {/each}
           </ul>
@@ -167,7 +172,7 @@
             }
           }
         />
-        {#if resolved?.details}
+        {#if resolved && viewer.patchResolver.hasResolvedDiff(file)}
           <Button.Root
             class="btn-ghost px-2 py-1 text-left"
             onclick={() => {

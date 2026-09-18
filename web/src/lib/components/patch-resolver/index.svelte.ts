@@ -3,8 +3,8 @@ import type { GithubDiff } from "$lib/github-api";
 import { fetchGithubFileText } from "$lib/github-api";
 import { getGithubToken } from "$lib/github-auth.svelte";
 import type { JarSource } from "$lib/patch-resolver/jar-source";
-import { isNestedJavaPatch } from "$lib/patch-resolver/nested-patch";
-import type { ResolvedFile, ResolveProgress, ResolveSummary } from "$lib/patch-resolver/resolver";
+import { isResolvablePatch } from "$lib/patch-resolver/patch-chain";
+import type { ResolvedEntry, ResolvedFile, ResolveProgress, ResolveSummary } from "$lib/patch-resolver/resolver";
 import { formatErrorWithCauses } from "$lib/util";
 import { SvelteSet } from "svelte/reactivity";
 import { ProgressBarState } from "$lib/components/progress-bar/index.svelte";
@@ -13,11 +13,22 @@ export type JarSourceKind = JarSource["kind"];
 
 export const DEFAULT_RESOLVED_CONTEXT_LINES = 10;
 
+/** What the viewer shows for a file: a resolved target, or the raw patch file it was resolved from */
+export type ResolvedInfo =
+  { kind: "entry"; entry: ResolvedEntry; file: ResolvedFile } | { kind: "file"; file: ResolvedFile };
+
 /**
  * State for resolving "patch of a patch" diffs (e.g. PaperMC's `*.java.patch` files) against a
  * decompiled jar, and for switching the viewer between the raw and resolved representations.
  */
 export class PatchResolverState {
+  /** Reserves viewer indices (and file states) for resolved entries that do not replace a file one-to-one */
+  private readonly allocateIndices: (count: number) => number;
+
+  constructor(allocateIndices: (count: number) => number) {
+    this.allocateIndices = allocateIndices;
+  }
+
   // Form state
   sourceKind: JarSourceKind = $state("minecraft");
   minecraftVersion = $state("");
@@ -39,10 +50,20 @@ export class PatchResolverState {
   /** Files for which the raw patch should be shown even though a resolved diff exists */
   readonly rawOverrides = new SvelteSet<number>();
 
-  readonly byIndex: Map<number, ResolvedFile> = $derived.by(() => {
+  readonly byOuterIndex: Map<number, ResolvedFile> = $derived.by(() => {
     const map = new Map<number, ResolvedFile>();
     if (this.summary) {
       for (const file of this.summary.files) map.set(file.index, file);
+    }
+    return map;
+  });
+
+  readonly byEntryIndex: Map<number, { entry: ResolvedEntry; file: ResolvedFile }> = $derived.by(() => {
+    const map = new Map<number, { entry: ResolvedEntry; file: ResolvedFile }>();
+    if (this.summary) {
+      for (const file of this.summary.files) {
+        for (const entry of file.entries) if (entry.details) map.set(entry.index, { entry, file });
+      }
     }
     return map;
   });
@@ -55,31 +76,64 @@ export class PatchResolverState {
     return stats;
   });
 
-  get(file: FileDetails): ResolvedFile | undefined {
-    return this.byIndex.get(file.index);
+  /** Resolution info for a file as currently shown in the viewer */
+  get(file: FileDetails): ResolvedInfo | undefined {
+    const entry = this.byEntryIndex.get(file.index);
+    if (entry && this.isShowingResolved(file)) return { kind: "entry", ...entry };
+    const outer = this.byOuterIndex.get(file.index);
+    return outer ? { kind: "file", file: outer } : undefined;
   }
 
-  /** Whether the viewer currently shows the resolved diff for this file */
+  private outerIndex(file: FileDetails): number {
+    return this.byEntryIndex.get(file.index)?.entry.outerIndex ?? file.index;
+  }
+
+  /** Whether the viewer currently shows a resolved diff for this file */
   isShowingResolved(file: FileDetails): boolean {
-    if (!this.showResolved || this.rawOverrides.has(file.index)) return false;
-    return this.byIndex.get(file.index)?.details !== undefined;
+    if (!this.showResolved) return false;
+    const outer = this.outerIndex(file);
+    if (this.rawOverrides.has(outer)) return false;
+    return this.byOuterIndex.get(outer)?.entries.some((e) => e.details !== undefined) ?? false;
+  }
+
+  hasResolvedDiff(file: FileDetails): boolean {
+    return this.byOuterIndex.get(this.outerIndex(file))?.entries.some((e) => e.details !== undefined) ?? false;
   }
 
   toggleFile(file: FileDetails) {
-    if (this.rawOverrides.has(file.index)) {
-      this.rawOverrides.delete(file.index);
+    const outer = this.outerIndex(file);
+    if (this.rawOverrides.has(outer)) {
+      this.rawOverrides.delete(outer);
     } else {
-      this.rawOverrides.add(file.index);
+      this.rawOverrides.add(outer);
     }
   }
 
   /** Substitutes resolved diffs into the raw file list according to the current toggles */
   applyTo(raw: FileDetails[]): FileDetails[] {
     if (!this.summary || !this.showResolved) return raw;
-    return raw.map((file) => {
-      if (this.rawOverrides.has(file.index)) return file;
-      return this.byIndex.get(file.index)?.details ?? file;
+    return raw.flatMap((file) => {
+      if (this.rawOverrides.has(file.index)) return [file];
+      const resolved = this.byOuterIndex.get(file.index);
+      if (!resolved) return [file];
+      const details: FileDetails[] = [];
+      for (const entry of resolved.entries) if (entry.details) details.push(entry.details);
+      return details.length > 0 ? details : [file];
     });
+  }
+
+  /** Assigns viewer indices to resolved entries that are shown in addition to (instead of) their patch file */
+  private assignIndices(summary: ResolveSummary) {
+    const pending: ResolvedEntry[] = [];
+    for (const file of summary.files) {
+      for (const entry of file.entries) if (entry.details && entry.index === -1) pending.push(entry);
+    }
+    if (pending.length === 0) return;
+    let index = this.allocateIndices(pending.length);
+    for (const entry of pending) {
+      entry.index = index++;
+      entry.details!.index = entry.index;
+    }
   }
 
   reset() {
@@ -97,7 +151,7 @@ export class PatchResolverState {
 
   static countNestedPatches(files: FileDetails[]): number {
     let count = 0;
-    for (const file of files) if (isNestedJavaPatch(file)) count++;
+    for (const file of files) if (isResolvablePatch(file)) count++;
     return count;
   }
 
@@ -171,6 +225,7 @@ export class PatchResolverState {
           }
         },
       });
+      this.assignIndices(summary);
       this.summary = summary;
       this.rawOverrides.clear();
       this.showResolved = true;
