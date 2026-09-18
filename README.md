@@ -18,6 +18,10 @@ Featureful and performant web-based diff viewer.
 
 SvelteKit frontend using tailwindcss for styling, deployed to Cloudflare Pages via GitHub Actions.
 
+This fork can also be self-hosted with Docker: `docker compose up -d --build` builds the frontend with SvelteKit's
+Node adapter and serves it on port 3000. "Login with GitHub" additionally needs a `GITHUB_CLIENT_SECRET` in the
+environment, and the matching GitHub App's client ID and name in `web/.env` before building.
+
 ### Resolving patch-of-patch diffs
 
 Repositories such as [PaperMC/Paper](https://github.com/PaperMC/Paper) cannot redistribute the source they modify and
