@@ -26,6 +26,7 @@ import { type AfterNavigate } from "@sveltejs/kit";
 import { DiffFilterDialogState } from "./components/diff-filtering/index.svelte";
 import { FileTreeState } from "./components/sidebar/index.svelte";
 import { GlobalOptions } from "./global-options.svelte";
+import { PatchResolverState } from "./components/patch-resolver/index.svelte";
 
 export const GITHUB_URL_PARAM = "github_url";
 export const PATCH_URL_PARAM = "patch_url";
@@ -220,7 +221,7 @@ export interface LoadPatchesOptions {
   state?: "push" | "replace";
 }
 
-export type DialogId = "open-diff" | "settings" | "diff-filter";
+export type DialogId = "open-diff" | "settings" | "diff-filter" | "resolve-patches";
 
 export class MultiFileDiffViewerState {
   private static readonly context = new Context<MultiFileDiffViewerState>("MultiFileDiffViewerState");
@@ -238,7 +239,12 @@ export class MultiFileDiffViewerState {
   // Main diff state
   readonly filter = new DiffFilterDialogState();
   diffMetadata: DiffMetadata | null = $state(null);
-  fileDetails: FileDetails[] = $state([]); // Read-only state
+  rawFileDetails: FileDetails[] = $state([]); // Read-only state, as loaded from the diff source
+  // Nested patch files (e.g. Paper's *.java.patch) can be resolved against a decompiled jar,
+  // in which case their diffs are substituted here
+  readonly patchResolver = new PatchResolverState();
+  readonly fileDetails: FileDetails[] = $derived(this.patchResolver.applyTo(this.rawFileDetails));
+  readonly nestedPatchCount = $derived(PatchResolverState.countNestedPatches(this.rawFileDetails));
   readonly filteredFileDetails = $derived.by(() => {
     const filtered: FileDetails[] = [];
     const vlistIndices: number[] = [];
@@ -295,6 +301,7 @@ export class MultiFileDiffViewerState {
   openDiffDialogOpen = $state(false);
   settingsDialogOpen = $state(false);
   diffFilterDialogOpen = $state(false);
+  resolvePatchesDialogOpen = $state(false);
   activeSearchResult: ActiveSearchResult | null = $state(null);
 
   private constructor(layoutState: PersistentLayoutState | null) {
@@ -360,10 +367,25 @@ export class MultiFileDiffViewerState {
     }
   }
 
+  /** Switches between the raw patch diffs and the resolved diffs from the patch resolver */
+  setShowResolvedPatches(show: boolean) {
+    if (this.patchResolver.showResolved === show) return;
+    this.clearSelection();
+    this.patchResolver.showResolved = show;
+  }
+
+  toggleResolvedPatch(file: FileDetails) {
+    if (this.selection?.file.index === file.index) {
+      this.clearSelection();
+    }
+    this.patchResolver.toggleFile(file);
+  }
+
   openDialog(id: DialogId) {
     this.openDiffDialogOpen = id === "open-diff";
     this.settingsDialogOpen = id === "settings";
     this.diffFilterDialogOpen = id === "diff-filter";
+    this.resolvePatchesDialogOpen = id === "resolve-patches";
   }
 
   toggleCollapse(idx: number) {
@@ -521,7 +543,8 @@ export class MultiFileDiffViewerState {
     if (clearMeta) {
       this.diffMetadata = null;
     }
-    this.fileDetails = [];
+    this.patchResolver.reset();
+    this.rawFileDetails = [];
     this.clearImages();
     this.vlist?.scrollToIndex(0, { align: "start" });
     this.filter.setFrom(this.globalOptions.defaultFilters);
@@ -605,7 +628,7 @@ export class MultiFileDiffViewerState {
         }
       }
 
-      this.fileDetails = tempDetails;
+      this.rawFileDetails = tempDetails;
       this.fileStates = statesArray;
 
       await tick();

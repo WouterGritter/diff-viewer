@@ -200,3 +200,26 @@ export async function fetchGithubFile(
     throw Error(`Failed to retrieve file (${response.status}): ${await response.text()}`);
   }
 }
+
+/**
+ * Fetches a text file from a repository. Without a token this goes through
+ * raw.githubusercontent.com to avoid the low unauthenticated API rate limit.
+ */
+export async function fetchGithubFileText(
+  token: string | null,
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+): Promise<string> {
+  if (!token) {
+    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+    const response = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${encodedPath}`);
+    if (response.ok) {
+      return await response.text();
+    }
+    throw Error(`Failed to retrieve file ${path}@${ref} (${response.status})`);
+  }
+  const blob = await fetchGithubFile(token, owner, repo, path, ref);
+  return await blob.text();
+}

@@ -48,6 +48,7 @@
     "wrangler": "^4.129.0"
   },
   "dependencies": {
+    "@run-slicer/vf": "0.6.4-1.12.0",
     "bits-ui": "^2.19.0",
     "chroma-js": "^3.2.0",
     "diff": "^9.0.0",

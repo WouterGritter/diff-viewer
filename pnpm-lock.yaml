@@ -10,6 +10,9 @@ importers:
 
   web:
     dependencies:
+      '@run-slicer/vf':
+        specifier: 0.6.4-1.12.0
+        version: 0.6.4-1.12.0
       bits-ui:
         specifier: ^2.19.0
         version: 2.19.0(@internationalized/date@3.12.1)(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.0(svelte@5.57.0(@typescript-eslint/types@8.69.0))(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)))(svelte@5.57.0(@typescript-eslint/types@8.69.0))(typescript@6.0.3)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.1)(jiti@2.7.0)))(svelte@5.57.0(@typescript-eslint/types@8.69.0))
@@ -786,6 +789,9 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
+
+  '@run-slicer/vf@0.6.4-1.12.0':
+    resolution: {integrity: sha512-fKKqDHVCOKed3jcbrX4aA9Za7YY+/7tq2tVlkbSPQ9NVMaGeBhqyRE/gnLc30ZJ3zKP/UYIh69FaUkrF/dmLuQ==}
 
   '@shikijs/core@4.4.3':
     resolution: {integrity: sha512-QCR4q2ZO/ILJEuwiBMel4wdcTDb1JGwfjKTxPDF6x8ixOaluPrVqIn06C99AcRPhmYlBR56d/Fb+GN58GzExpg==}
@@ -2725,6 +2731,8 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.0.1': {}
+
+  '@run-slicer/vf@0.6.4-1.12.0': {}
 
   '@shikijs/core@4.4.3':
     dependencies:
