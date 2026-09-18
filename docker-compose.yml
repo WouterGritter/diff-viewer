@@ -1,0 +1,10 @@
+services:
+  diff-viewer:
+    build: .
+    environment:
+      # Only needed for "login with GitHub" (private repos, higher rate limits). Requires a GitHub App whose callback
+      # URL is https://<your-domain>/github-callback; put its client ID and name in web/.env before building.
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
