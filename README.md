@@ -11,6 +11,24 @@ Featureful and performant web-based diff viewer.
 
 SvelteKit frontend using tailwindcss for styling, deployed to Cloudflare Pages via GitHub Actions.
 
+### Resolving patch-of-patch diffs
+
+Repositories such as [PaperMC/Paper](https://github.com/PaperMC/Paper) cannot redistribute the source they modify and
+instead store `*.java.patch` files, so a diff of the repository is a diff of patch files. For diffs loaded from GitHub
+that contain such files, **Resolve patches** (in the toolbar) downloads the jar the patches target, decompiles the
+affected classes locally in the browser and shows the diff of the actual patched source, with surrounding code for
+context.
+
+- The jar is fetched straight from its origin (Mojang's servers for Minecraft versions, or any URL) into the browser and
+  is never uploaded or redistributed. You must own a license for the software being decompiled.
+- Decompilation uses [Vineflower](https://github.com/Vineflower/vineflower) 1.12.0 compiled to WebAssembly
+  ([@run-slicer/vf](https://www.npmjs.com/package/@run-slicer/vf)), configured like PaperMC's
+  [mache](https://github.com/PaperMC/mache) so the output closely matches the source Paper's patches are made against.
+  Steps of Paper's pipeline that cannot run in the browser (codebook, access transformers, mache patches) are not
+  reproduced, so patches are applied with fuzzy context matching; hunks that cannot be placed are reported per file and
+  the raw patch diff remains available.
+- Only unobfuscated Minecraft versions (26.1-snapshot-1 and later) are supported.
+
 ### Web Extension
 
 Web extension that streamlines opening diffs in the viewer.

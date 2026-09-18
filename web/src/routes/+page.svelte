@@ -16,6 +16,8 @@
   import { PaneGroup, Pane, PaneResizer } from "paneforge";
   import DiffFilterDialog from "$lib/components/diff-filtering/DiffFilterDialog.svelte";
   import DiffFilterIndicator from "$lib/components/diff-filtering/DiffFilterIndicator.svelte";
+  import ResolvePatchesDialog from "$lib/components/patch-resolver/ResolvePatchesDialog.svelte";
+  import PatchResolverIndicator from "$lib/components/patch-resolver/PatchResolverIndicator.svelte";
 
   let { data }: PageProps = $props();
   const globalOptions = GlobalOptions.get();
@@ -57,6 +59,7 @@
 <OpenDiffDialog bind:open={viewer.openDiffDialogOpen} />
 <SettingsDialog bind:open={viewer.settingsDialogOpen} />
 <DiffFilterDialog mode="session" bind:open={viewer.diffFilterDialogOpen} instance={viewer.filter} />
+<ResolvePatchesDialog bind:open={viewer.resolvePatchesDialogOpen} />
 
 {#snippet sidebarPane(order: number)}
   {#if !viewer.layoutState.sidebarCollapsed}
@@ -86,6 +89,7 @@
     <div class="flex flex-row items-center gap-2 px-3 py-2">
       <DiffStats add={viewer.statsSummary.addedLines} remove={viewer.statsSummary.removedLines} />
       <DiffFilterIndicator />
+      <PatchResolverIndicator />
       <DiffSearch />
     </div>
     <div class="flex flex-1 grow flex-col border-t">
