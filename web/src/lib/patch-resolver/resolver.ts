@@ -249,6 +249,7 @@ async function resolveOuterFile(
   const entries = await mapConcurrent(targets, 2, async ({ target, oneToOne }) => {
     const entry = await resolveTarget(file, target, chain, decompiler, contextLines);
     entry.index = oneToOne ? file.index : -1;
+    if (entry.details) entry.details.index = entry.index;
     return entry;
   });
 
