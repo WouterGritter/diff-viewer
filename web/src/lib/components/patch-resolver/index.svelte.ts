@@ -8,10 +8,14 @@ import type { ResolvedEntry, ResolvedFile, ResolveProgress, ResolveSummary } fro
 import { formatErrorWithCauses } from "$lib/util";
 import { SvelteSet } from "svelte/reactivity";
 import { ProgressBarState } from "$lib/components/progress-bar/index.svelte";
+import { browser } from "$app/environment";
 
 export type JarSourceKind = JarSource["kind"];
 
-export const DEFAULT_RESOLVED_CONTEXT_LINES = 10;
+export const DEFAULT_RESOLVED_CONTEXT_LINES = 30;
+
+/** The license confirmation is remembered across sessions, it is the same answer every time */
+const LICENSE_ACCEPTED_KEY = "diff-viewer-decompile-license-accepted";
 
 /** What the viewer shows for a file: a resolved target, or the raw patch file it was resolved from */
 export type ResolvedInfo =
@@ -33,7 +37,7 @@ export class PatchResolverState {
   sourceKind: JarSourceKind = $state("minecraft");
   minecraftVersion = $state("");
   jarUrl = $state("");
-  licenseAccepted = $state(false);
+  #licenseAccepted = $state(browser && localStorage.getItem(LICENSE_ACCEPTED_KEY) === "true");
   contextLines = $state(DEFAULT_RESOLVED_CONTEXT_LINES);
   /** Version detected from the repository (e.g. Paper's gradle.properties), if any */
   detectedVersion: string | null = $state(null);
@@ -75,6 +79,17 @@ export class PatchResolverState {
     }
     return stats;
   });
+
+  get licenseAccepted() {
+    return this.#licenseAccepted;
+  }
+
+  set licenseAccepted(accepted: boolean) {
+    this.#licenseAccepted = accepted;
+    if (browser) {
+      localStorage.setItem(LICENSE_ACCEPTED_KEY, "" + accepted);
+    }
+  }
 
   /** Resolution info for a file as currently shown in the viewer */
   get(file: FileDetails): ResolvedInfo | undefined {

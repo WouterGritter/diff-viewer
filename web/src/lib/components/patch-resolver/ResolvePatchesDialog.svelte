@@ -5,6 +5,7 @@
   import LabeledCheckbox from "$lib/components/LabeledCheckbox.svelte";
   import ProgressBar from "$lib/components/progress-bar/ProgressBar.svelte";
   import { fetchMinecraftVersions, isUnobfuscatedVersion } from "$lib/patch-resolver/jar-source";
+  import { getGithubUsername, loginWithGithub } from "$lib/github-auth.svelte";
   import { watch } from "runed";
 
   interface Props {
@@ -83,6 +84,27 @@
           does to the source, with surrounding code for context. Nothing is uploaded or redistributed; the jar is fetched
           straight from its origin into your browser.
         </p>
+
+        {#if !getGithubUsername()}
+          <div class="flex flex-col items-start gap-2 rounded-md border bg-neutral-2 p-3">
+            <span class="flex gap-2 text-sm text-em-med">
+              <span class="mt-0.5 iconify shrink-0 text-em-med octicon--info-16" aria-hidden="true"></span>
+              <span>
+                Resolving reads the repository's other patch files from the GitHub API, which is rate limited to 60
+                requests per hour for signed out users. Signing in is recommended, as a single run can exceed that on
+                repositories with many patches.
+              </span>
+            </span>
+            <Button.Root
+              type="button"
+              class="flex flex-row items-center gap-2 rounded-md btn-fill-neutral px-2 py-1"
+              onclick={loginWithGithub}
+            >
+              <span class="iconify shrink-0 text-em-med octicon--sign-in-16"></span>
+              Sign in to GitHub
+            </Button.Root>
+          </div>
+        {/if}
 
         <section class="flex flex-col gap-2">
           <header class="flex items-center gap-1 font-semibold">
