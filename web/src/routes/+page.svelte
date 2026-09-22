@@ -27,12 +27,12 @@
     if (viewer.diffMetadata) {
       const meta = viewer.diffMetadata;
       if (meta.type === "github") {
-        return `${meta.details.description} - GitHub/${meta.details.owner}/${meta.details.repo} - diffs.dev`;
+        return `${meta.details.description} - GitHub/${meta.details.owner}/${meta.details.repo} - diffs.gritter.nl`;
       } else if (meta.type === "file") {
-        return `${meta.fileName} - diffs.dev`;
+        return `${meta.fileName} - diffs.gritter.nl`;
       }
     }
-    return "diffs.dev Diff Viewer";
+    return "diffs.gritter.nl Diff Viewer";
   }
 
   let pageTitle = $derived(getPageTitle());

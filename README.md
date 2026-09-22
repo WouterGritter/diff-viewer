@@ -1,11 +1,18 @@
-# [Diff Viewer](https://diffs.dev)
+# [Diff Viewer](https://diffs.gritter.nl)
 Featureful and performant web-based diff viewer.
+
+> **This is a fork**, hosted at **[diffs.gritter.nl](https://diffs.gritter.nl)**.
+>
+> Upstream is [PaperMC/diff-viewer](https://github.com/PaperMC/diff-viewer) (hosted at [diffs.dev](https://diffs.dev)).
+> This fork adds [patch-of-patch diff resolving](#resolving-patch-of-patch-diffs), which decompiles the jar that a
+> Paper-style repository patches and shows the diff of the actual patched source instead of the diff of the patch
+> files. That is not intended to be merged upstream, so this fork is maintained and deployed separately.
 
 ## Overview
 
 ### Routes
 
-- [`/`](https://diffs.dev): Multi-file concise diff viewer
+- [`/`](https://diffs.gritter.nl): Multi-file concise diff viewer
 
 ### Tech Stack
 

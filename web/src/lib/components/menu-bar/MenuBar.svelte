@@ -14,13 +14,13 @@
 <Menubar.Root class="flex border-b leading-none">
   <Menubar.Menu>
     <Menubar.Trigger class="btn-ghost px-2 py-1 text-sm font-medium data-[state=open]:btn-ghost-hover"
-      >diffs.dev</Menubar.Trigger
+      >diffs.gritter.nl</Menubar.Trigger
     >
     <Menubar.Portal>
       <Menubar.Content class="z-20 border bg-neutral text-sm" align="start">
         <Menubar.Item>
           <Button.Root
-            href="https://github.com/PaperMC/diff-viewer"
+            href="https://github.com/WouterGritter/diff-viewer"
             class="flex items-center gap-2 btn-ghost px-2 py-1"
             target="_blank"
             rel="noopener noreferrer"
