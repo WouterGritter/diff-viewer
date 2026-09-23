@@ -12,18 +12,8 @@ import { browser } from "$app/environment";
 
 export type JarSourceKind = JarSource["kind"];
 
-export const DEFAULT_RESOLVED_CONTEXT_LINES = 20;
-
 /** The license confirmation is remembered across sessions, it is the same answer every time */
 const LICENSE_ACCEPTED_KEY = "diff-viewer-decompile-license-accepted";
-/** The context line count is remembered across sessions as well */
-const CONTEXT_LINES_KEY = "diff-viewer-resolved-context-lines";
-
-function loadContextLines(): number {
-  if (!browser) return DEFAULT_RESOLVED_CONTEXT_LINES;
-  const stored = Number(localStorage.getItem(CONTEXT_LINES_KEY) ?? NaN);
-  return Number.isFinite(stored) && stored >= 0 ? stored : DEFAULT_RESOLVED_CONTEXT_LINES;
-}
 
 /** What the viewer shows for a file: a resolved target, or the raw patch file it was resolved from */
 export type ResolvedInfo =
@@ -46,7 +36,6 @@ export class PatchResolverState {
   minecraftVersion = $state("");
   jarUrl = $state("");
   #licenseAccepted = $state(browser && localStorage.getItem(LICENSE_ACCEPTED_KEY) === "true");
-  #contextLines = $state(loadContextLines());
   /** Version detected from the repository (e.g. Paper's gradle.properties), if any */
   detectedVersion: string | null = $state(null);
 
@@ -96,18 +85,6 @@ export class PatchResolverState {
     this.#licenseAccepted = accepted;
     if (browser) {
       localStorage.setItem(LICENSE_ACCEPTED_KEY, "" + accepted);
-    }
-  }
-
-  get contextLines() {
-    return this.#contextLines;
-  }
-
-  set contextLines(lines: number) {
-    this.#contextLines = lines;
-    // An emptied number input binds null, don't persist that
-    if (browser && typeof lines === "number" && Number.isFinite(lines) && lines >= 0) {
-      localStorage.setItem(CONTEXT_LINES_KEY, "" + lines);
     }
   }
 
@@ -249,7 +226,6 @@ export class PatchResolverState {
       const { resolveNestedPatches } = await import("$lib/patch-resolver/resolver");
       const summary = await resolveNestedPatches(getGithubToken(), github, files, {
         jar: source,
-        contextLines: Math.max(0, Math.floor(this.contextLines)),
         signal: this.abortController.signal,
         onProgress: (progress) => {
           this.progress = progress;

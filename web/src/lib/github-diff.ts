@@ -4,6 +4,7 @@ import {
   fetchGithubPRComparison,
   fetchGithubSingleBranchComparison,
   fetchGithubFile,
+  fetchGithubFileText,
   type GithubDiff,
   type GithubDiffResult,
 } from "./github-api";
@@ -39,13 +40,25 @@ export function parseMultiFilePatchGithub(
   patch: string,
   onTotalCount: (total: number) => void,
 ) {
-  return parseMultiFilePatch(patch, onTotalCount, (from, to, status) => {
-    return makeImageDetails(
-      from,
-      to,
-      status,
-      status != "added" ? fetchGithubFile(token, details.owner, details.repo, from, details.base) : undefined,
-      status != "removed" ? fetchGithubFile(token, details.owner, details.repo, to, details.head) : undefined,
-    );
-  });
+  return parseMultiFilePatch(
+    patch,
+    onTotalCount,
+    (from, to, status) => {
+      return makeImageDetails(
+        from,
+        to,
+        status,
+        status != "added" ? fetchGithubFile(token, details.owner, details.repo, from, details.base) : undefined,
+        status != "removed" ? fetchGithubFile(token, details.owner, details.repo, to, details.head) : undefined,
+      );
+    },
+    (header) => {
+      // Added and removed files are shown in full already
+      if (header.status === "added" || header.status === "removed") return undefined;
+      return {
+        side: "new",
+        load: () => fetchGithubFileText(token, details.owner, details.repo, header.toFile, details.head),
+      };
+    },
+  );
 }

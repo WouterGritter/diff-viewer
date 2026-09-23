@@ -143,7 +143,7 @@ export class OpenDiffDialogState {
       status = "renamed_modified";
     }
 
-    yield makeTextDetails(fileAMeta.name, fileBMeta.name, status, diff);
+    yield makeTextDetails(fileAMeta.name, fileBMeta.name, status, diff, { side: "new", load: async () => textB });
   }
 
   async compareDirs() {
@@ -208,6 +208,7 @@ export class OpenDiffDialogState {
             entryB.path,
             "modified",
             createTwoFilesPatch(entry.path, entryB.path, textA, textB),
+            { side: "new", load: () => entryB.file.text() },
           );
         }
       } else if (isImageFile(entry.file.name)) {

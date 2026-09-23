@@ -84,6 +84,11 @@
           does to the source, with surrounding code for context. Nothing is uploaded or redistributed; the jar is fetched
           straight from its origin into your browser.
         </p>
+        <p class="text-sm text-em-med">
+          The patches are applied using fuzzy matching, since the decompiled output can differ slightly from the source
+          they were created against. Files where hunks could not be placed are marked, and their raw patch diff can
+          still be viewed.
+        </p>
 
         {#if !getGithubUsername()}
           <div class="flex flex-col items-start gap-2 rounded-md border bg-neutral-2 p-3">
@@ -162,27 +167,6 @@
               />
             </div>
           </RadioGroup.Root>
-        </section>
-
-        <section class="flex flex-col gap-2">
-          <header class="flex items-center gap-1 font-semibold">
-            Options
-            <InfoPopup>
-              The patches are applied to the decompiled source using fuzzy matching, since the decompiled output can
-              differ slightly from the source the patches were created against. Files where hunks could not be placed
-              are marked, and their raw patch diff can still be viewed.
-            </InfoPopup>
-          </header>
-          <label class="flex items-center gap-2">
-            <span>Context lines around changes</span>
-            <input
-              type="number"
-              min="0"
-              max="1000"
-              class="w-20 rounded-md border px-2 py-1 inset-shadow-xs ring-focus focus:outline-none focus-visible:ring-2"
-              bind:value={resolver.contextLines}
-            />
-          </label>
         </section>
 
         <section class="flex flex-col gap-1">

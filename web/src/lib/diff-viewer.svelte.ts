@@ -27,6 +27,7 @@ import { DiffFilterDialogState } from "./components/diff-filtering/index.svelte"
 import { FileTreeState } from "./components/sidebar/index.svelte";
 import { GlobalOptions } from "./global-options.svelte";
 import { PatchResolverState } from "./components/patch-resolver/index.svelte";
+import { ContextExpansionState } from "./components/diff/context-expansion.svelte";
 
 export const GITHUB_URL_PARAM = "github_url";
 export const PATCH_URL_PARAM = "patch_url";
@@ -244,6 +245,8 @@ export class MultiFileDiffViewerState {
   // in which case their diffs are substituted here
   readonly patchResolver = new PatchResolverState((count) => this.allocateFileStates(count));
   readonly fileDetails: FileDetails[] = $derived(this.patchResolver.applyTo(this.rawFileDetails));
+  // Unchanged lines revealed around hunks, for files whose full contents are available
+  readonly contextExpansion = new ContextExpansionState();
   readonly nestedPatchCount = $derived(PatchResolverState.countNestedPatches(this.rawFileDetails));
   readonly filteredFileDetails = $derived.by(() => {
     const filtered: FileDetails[] = [];
@@ -553,6 +556,7 @@ export class MultiFileDiffViewerState {
       this.diffMetadata = null;
     }
     this.patchResolver.reset();
+    this.contextExpansion.clear();
     this.rawFileDetails = [];
     this.clearImages();
     this.vlist?.scrollToIndex(0, { align: "start" });
@@ -738,7 +742,7 @@ export class MultiFileDiffViewerState {
       if (details.type !== "text") {
         return undefined;
       }
-      return details.structuredPatch;
+      return this.contextExpansion.getPatch(details);
     });
     const diffs = await Promise.all(diffPromises);
 

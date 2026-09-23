@@ -104,6 +104,8 @@ export function resolveLineRef(ref: UnresolvedLineRef, hunks: DiffViewerPatchHun
 }
 
 export interface DiffViewerPatch {
+  /** The patch this was parsed from */
+  source: StructuredPatch;
   hunks: DiffViewerPatchHunk[];
 }
 
@@ -736,7 +738,7 @@ export async function parseDiffViewerPatch(
     );
   }
 
-  return { hunks };
+  return { source: patch, hunks };
 }
 
 async function makeHunk(

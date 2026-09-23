@@ -12,9 +12,19 @@ export interface CommonFileDetails {
   status: FileStatus;
 }
 
+export type FullFileSide = "old" | "new";
+
+/** Loads the complete contents of one side of a text file, used to expand the context around hunks */
+export interface FullFileSource {
+  side: FullFileSide;
+  load: () => Promise<string>;
+}
+
 export interface TextFileDetails extends CommonFileDetails {
   type: "text";
   structuredPatch: StructuredPatch;
+  /** Absent when the full file is not available, e.g. for plain patch files */
+  fullFile?: FullFileSource;
   patchHeaderDiffOnly: boolean;
   addedLines: number;
   removedLines: number;
@@ -30,6 +40,7 @@ export function makeTextDetails(
   toFile: string,
   status: FileStatus,
   patchText: string,
+  fullFile?: FullFileSource,
 ): TextFileDetails {
   const patch = parseSinglePatch(patchText);
 
@@ -56,6 +67,7 @@ export function makeTextDetails(
     toFile,
     status,
     structuredPatch: patch,
+    fullFile,
     patchHeaderDiffOnly: patchHeaderDiffOnly(patch),
     addedLines,
     removedLines,

@@ -44,7 +44,6 @@ export interface ResolveSummary {
   jarLabel: string;
   /** Labels of the patch layers that were applied, upstream first */
   layers: string[];
-  contextLines: number;
   files: ResolvedFile[];
 }
 
@@ -57,8 +56,6 @@ export interface ResolveProgress {
 
 export interface ResolveOptions {
   jar: JarSource;
-  /** Number of unchanged lines to show around changes in the resolved diff */
-  contextLines: number;
   onProgress: (progress: ResolveProgress) => void;
   signal?: AbortSignal;
 }
@@ -166,7 +163,7 @@ export async function resolveNestedPatches(
       const fetchError = fetchErrors.get(file.index);
       const result: ResolvedFile = fetchError
         ? { index: file.index, status: "failed", notes: [`Could not fetch the patch file: ${fetchError}`], entries: [] }
-        : await resolveOuterFile(file, root, changes, chain, decompiler, options.contextLines);
+        : await resolveOuterFile(file, root, changes, chain, decompiler);
       done++;
       report();
       throwIfAborted(signal);
@@ -176,7 +173,6 @@ export async function resolveNestedPatches(
     return {
       jarLabel: jar.label,
       layers: layers.map((l) => l.label),
-      contextLines: options.contextLines,
       files: resolved,
     };
   } finally {
@@ -190,7 +186,6 @@ async function resolveOuterFile(
   changes: Map<string, OuterPatchChange>,
   chain: PatchChainBuilder,
   decompiler: Decompiler,
-  contextLines: number,
 ): Promise<ResolvedFile> {
   const path = file.toFile || file.fromFile;
   const change = changes.get(file.toFile) ?? changes.get(file.fromFile);
@@ -228,7 +223,7 @@ async function resolveOuterFile(
   }
 
   const entries = await mapConcurrent(targets, 2, async ({ target, oneToOne }) => {
-    const entry = await resolveTarget(file, target, chain, decompiler, contextLines);
+    const entry = await resolveTarget(file, target, chain, decompiler);
     entry.index = oneToOne ? file.index : -1;
     if (entry.details) entry.details.index = entry.index;
     return entry;
@@ -248,7 +243,6 @@ async function resolveTarget(
   target: string,
   chain: PatchChainBuilder,
   decompiler: Decompiler,
-  contextLines: number,
 ): Promise<ResolvedEntry> {
   const notes: string[] = [];
   const base = (): ResolvedEntry => ({ index: -1, outerIndex: file.index, target, status: "skipped", notes });
@@ -324,10 +318,12 @@ async function resolveTarget(
     if (oldSource === "" && newSource !== "") fileStatus = "added";
     else if (newSource === "" && oldSource !== "") fileStatus = "removed";
   }
-  const patchText = createTwoFilesPatch(target, target, oldSource, newSource, undefined, undefined, {
-    context: contextLines,
-  });
-  const details = makeTextDetails(fromPath, displayPath, fileStatus, patchText);
+  // Same context as git (and thus GitHub) diffs, more can be revealed in the viewer
+  const patchText = createTwoFilesPatch(target, target, oldSource, newSource, undefined, undefined, { context: 3 });
+  // The patched sources are at hand, so the context shown around changes can be expanded further
+  const fullFile =
+    oldSource !== "" && newSource !== "" ? { side: "new" as const, load: async () => newSource } : undefined;
+  const details = makeTextDetails(fromPath, displayPath, fileStatus, patchText, fullFile);
   return { ...base(), status, details };
 }
 

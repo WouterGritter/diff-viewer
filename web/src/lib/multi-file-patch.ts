@@ -4,12 +4,13 @@ import {
   type FileDetails,
   type ImageFileDetails,
   type FileStatus,
+  type FullFileSource,
 } from "./file-details";
 import { isImageFile } from "./util";
 
 const fileRegex = /diff --git a\/(\S+) b\/(\S+)\r?\n(?:.+\r?\n)*?(?=-- \r?\n|diff --git|$)/g;
 
-type BasicHeader = {
+export type BasicHeader = {
   fromFile: string;
   toFile: string;
   status: FileStatus;
@@ -59,6 +60,7 @@ export function parseMultiFilePatch(
   patchContent: string,
   onTotalCount: (total: number) => void,
   imageFactory?: (fromFile: string, toFile: string, status: FileStatus) => ImageFileDetails | null,
+  fullFileFactory?: (header: BasicHeader) => FullFileSource | undefined,
 ): AsyncGenerator<FileDetails> {
   const split = splitMultiFilePatch(patchContent);
   onTotalCount(split.length);
@@ -77,7 +79,7 @@ export function parseMultiFilePatch(
         }
       }
 
-      yield makeTextDetails(header.fromFile, header.toFile, header.status, content);
+      yield makeTextDetails(header.fromFile, header.toFile, header.status, content, fullFileFactory?.(header));
     }
   }
   return detailsGenerator();

@@ -13,12 +13,14 @@
     patchLineTypeProps,
     type SearchSegment,
   } from "$lib/components/diff/text-diff.svelte";
+  import { EXPAND_STEP, type ExpandDirection } from "$lib/components/diff/context-expansion.svelte";
   import Spinner from "$lib/components/Spinner.svelte";
   import { GlobalOptions } from "$lib/global-options.svelte";
   import { MultiFileDiffViewerState } from "$lib/diff-viewer.svelte";
   import { type MutableValue } from "$lib/util";
   import { box } from "svelte-toolbelt";
   import { boolAttr } from "runed";
+  import type { StructuredPatch } from "diff";
 
   interface Props {
     file: TextFileDetails;
@@ -33,7 +35,7 @@
   const view = new TextDiffState({
     rootElementId: uid,
 
-    patch: box.with(() => file.structuredPatch),
+    patch: box.with(() => viewer.contextExpansion.getPatch(file)),
     syntaxHighlighting: box.with(() => globalOptions.syntaxHighlighting),
     syntaxHighlightingTheme: box.with(() => globalOptions.syntaxHighlightingTheme),
     omitPatchHeaderOnlyHunks: box.with(() => globalOptions.omitPatchHeaderOnlyHunks),
@@ -115,8 +117,9 @@
   });
 
   let heightEstimateRem = $derived.by(() => {
-    const rawLineCount = file.structuredPatch.hunks.reduce((sum, hunk) => sum + hunk.lines.length, 0);
-    const headerAndSpacerLines = file.structuredPatch.hunks.length * 2;
+    const patch = viewer.contextExpansion.getPatch(file);
+    const rawLineCount = patch.hunks.reduce((sum, hunk) => sum + hunk.lines.length, 0);
+    const headerAndSpacerLines = patch.hunks.length * 2;
     const totalLines = rawLineCount + headerAndSpacerLines;
     return totalLines * 1.25;
   });
@@ -192,28 +195,75 @@
   {/await}
 {/snippet}
 
-{#snippet renderLine(line: PatchLine, hunk: DiffViewerPatchHunk, hunkIndex: number, lineIndex: number)}
+{#snippet expandButton(
+  patch: StructuredPatch,
+  gapIdx: number,
+  direction: ExpandDirection,
+  iconClass: string,
+  label: string,
+)}
+  <button
+    type="button"
+    class="flex h-5 w-full cursor-pointer items-center justify-center text-[var(--hunk-header-fg)] hover:bg-[var(--select-bg)] disabled:cursor-wait disabled:opacity-50"
+    title={label}
+    aria-label={label}
+    disabled={viewer.contextExpansion.isLoading(file)}
+    onclick={() => viewer.contextExpansion.expand(file, patch, gapIdx, direction)}
+  >
+    <span class="iconify size-4 {iconClass}" aria-hidden="true"></span>
+  </button>
+{/snippet}
+
+<!-- Buttons revealing the unchanged lines hidden before hunk gapIdx (after the last hunk when gapIdx === hunks.length) -->
+{#snippet expander(patch: StructuredPatch, gapIdx: number, size: number | null)}
+  <div class="col-span-2 flex flex-col bg-[var(--hunk-header-bg)] select-none">
+    {#if gapIdx === patch.hunks.length}
+      {@render expandButton(patch, gapIdx, "down", "octicon--fold-down-16", "Expand down")}
+    {:else if gapIdx === 0}
+      {@render expandButton(patch, gapIdx, "up", "octicon--fold-up-16", "Expand up")}
+    {:else if size !== null && size <= EXPAND_STEP}
+      {@render expandButton(patch, gapIdx, "all", "octicon--unfold-16", `Expand all ${size} lines`)}
+    {:else}
+      {@render expandButton(patch, gapIdx, "down", "octicon--fold-down-16", "Expand down")}
+      {@render expandButton(patch, gapIdx, "up", "octicon--fold-up-16", "Expand up")}
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet renderLine(
+  line: PatchLine,
+  hunk: DiffViewerPatchHunk,
+  hunkIndex: number,
+  lineIndex: number,
+  patch: StructuredPatch,
+  gaps: (number | null)[] | null,
+)}
   {@const lineType = patchLineTypeProps[line.type]}
   {@const lineTypeSelectable = line.type !== PatchLineType.HEADER && line.type !== PatchLineType.SPACER}
-  <div
-    class="line-number h-full bg-[var(--hunk-header-bg)] px-2 select-none data-selectable:cursor-pointer {lineType.lineNoClasses}"
-    data-hunk-idx={hunkIndex}
-    data-line-idx={lineIndex}
-    data-selectable={boolAttr(lineTypeSelectable)}
-    {@attach view.selectable(hunk, hunkIndex, line, lineIndex)}
-  >
-    {getDisplayLineNo(line, line.oldLineNo)}
-  </div>
-  <div
-    class="selected-indicator line-number h-full bg-[var(--hunk-header-bg)] px-2 select-none data-selectable:cursor-pointer {lineType.lineNoClasses}"
-    data-hunk-idx={hunkIndex}
-    data-line-idx={lineIndex}
-    data-selectable={boolAttr(lineTypeSelectable)}
-    data-selected={boolAttr(view.isSelected(hunkIndex, lineIndex))}
-    {@attach view.selectable(hunk, hunkIndex, line, lineIndex)}
-  >
-    {getDisplayLineNo(line, line.newLineNo)}
-  </div>
+  {@const gap = line.type === PatchLineType.HEADER && gaps ? gaps[hunkIndex] : 0}
+  {#if gap !== 0}
+    {@render expander(patch, hunkIndex, gap)}
+  {:else}
+    <div
+      class="line-number h-full bg-[var(--hunk-header-bg)] px-2 select-none data-selectable:cursor-pointer {lineType.lineNoClasses}"
+      data-hunk-idx={hunkIndex}
+      data-line-idx={lineIndex}
+      data-selectable={boolAttr(lineTypeSelectable)}
+      {@attach view.selectable(hunk, hunkIndex, line, lineIndex)}
+    >
+      {getDisplayLineNo(line, line.oldLineNo)}
+    </div>
+    <div
+      class="selected-indicator line-number h-full bg-[var(--hunk-header-bg)] px-2 select-none data-selectable:cursor-pointer {lineType.lineNoClasses}"
+      data-hunk-idx={hunkIndex}
+      data-line-idx={lineIndex}
+      data-selectable={boolAttr(lineTypeSelectable)}
+      data-selected={boolAttr(view.isSelected(hunkIndex, lineIndex))}
+      {@attach view.selectable(hunk, hunkIndex, line, lineIndex)}
+    >
+      {getDisplayLineNo(line, line.newLineNo)}
+    </div>
+  {/if}
   <div
     class="selected-indicator w-full pl-[1rem] {lineType.classes}"
     data-hunk-idx={hunkIndex}
@@ -252,6 +302,8 @@
     </div>
   </div>
 {:then [rootStyle, diffViewerPatch]}
+  {@const patch = diffViewerPatch.source}
+  {@const gaps = viewer.contextExpansion.gaps(file, patch)}
   <div
     id={uid}
     style={rootStyle}
@@ -260,9 +312,13 @@
   >
     {#each diffViewerPatch.hunks as hunk, hunkIndex (hunkIndex)}
       {#each hunk.lines as line, lineIndex (lineIndex)}
-        {@render renderLine(line, hunk, hunkIndex, lineIndex)}
+        {@render renderLine(line, hunk, hunkIndex, lineIndex, patch, gaps)}
       {/each}
     {/each}
+    {#if gaps && gaps[patch.hunks.length] !== 0}
+      {@render expander(patch, patch.hunks.length, gaps[patch.hunks.length])}
+      <div class="bg-[var(--hunk-header-bg)]"></div>
+    {/if}
   </div>
 {/await}
 
