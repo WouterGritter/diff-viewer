@@ -7,6 +7,15 @@ Featureful and performant web-based diff viewer.
 > This fork adds [patch-of-patch diff resolving](#resolving-patch-of-patch-diffs), which decompiles the jar that a
 > Paper-style repository patches and shows the diff of the actual patched source instead of the diff of the patch
 > files. That is not intended to be merged upstream, so this fork is maintained and deployed separately.
+>
+> Other quality-of-life changes in this fork:
+>
+> - GitHub-style arrows to expand the context around hunks of GitHub diffs, and a menu item to expand all lines.
+> - A **Viewed** checkbox in file headers that collapses the diff. Viewed files are remembered across page loads and
+>   diff sources (the same change in a PR, a fork's commit or a patch file), and can be cleared in the settings.
+> - A setting to automatically resolve patches when opening a diff.
+> - The sidebar starts closed on mobile.
+> - Self-hosting with [Docker](#tech-stack).
 
 ## Overview
 
