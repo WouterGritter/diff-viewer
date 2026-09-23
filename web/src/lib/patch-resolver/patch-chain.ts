@@ -148,6 +148,31 @@ export function splitFeaturePatch(text: string): Map<string, string> {
   return sections;
 }
 
+/**
+ * Strips what changes when an earlier patch shifts lines: blob hashes on `index` lines and the
+ * line numbers of hunk headers
+ */
+function normalizeSection(section: string): string {
+  return section
+    .replace(/^index [0-9a-f]+\.\.[0-9a-f]+.*$/gm, "")
+    .replace(/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/gm, "@@");
+}
+
+/** Targets of a feature patch whose sections differ between the old and new version, beyond patch headers */
+export function changedFeatureTargets(change: OuterPatchChange): string[] {
+  const oldSections = change.oldText === null ? new Map<string, string>() : splitFeaturePatch(change.oldText);
+  const newSections = change.newText === null ? new Map<string, string>() : splitFeaturePatch(change.newText);
+  const targets = new Set<string>();
+  for (const [target, section] of newSections) {
+    const old = oldSections.get(target);
+    if (old === undefined || normalizeSection(old) !== normalizeSection(section)) targets.add(target);
+  }
+  for (const target of oldSections.keys()) {
+    if (!newSections.has(target)) targets.add(target);
+  }
+  return Array.from(targets).sort();
+}
+
 export function isFeaturePatchPath(path: string): boolean {
   return /(^|\/)(patches|minecraft-patches)\/[^/]+\/[^/]+\.patch$/.test(path) && !path.endsWith(".java.patch");
 }

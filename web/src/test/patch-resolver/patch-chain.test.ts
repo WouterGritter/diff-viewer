@@ -1,4 +1,5 @@
 import {
+  changedFeatureTargets,
   isFeaturePatchPath,
   isSourcePatchPath,
   patchesRootOf,
@@ -46,6 +47,23 @@ test("splits a git-format patch into per-file sections", () => {
   const added = sections.get("ca/spottedleaf/New.java")!;
   expect(added).toContain("--- /dev/null");
   expect(added).not.toContain("2.50.0");
+});
+
+test("ignores feature patch sections whose only changes are index lines and hunk line numbers", () => {
+  const shifted = FEATURE_PATCH.replace(
+    "index a4d608d64b7d3477c9144d93547fd3b4f39a1b02..e2939cc39a8c103e4c4d7b01d39b5546486e4fbc",
+    "index 1111111111111111111111111111111111111111..2222222222222222222222222222222222222222",
+  ).replace("@@ -102,7 +102,8 @@ public class Main {", "@@ -100,7 +100,8 @@ public class Main {");
+  expect(changedFeatureTargets({ oldText: FEATURE_PATCH, newText: shifted })).toEqual([]);
+
+  const edited = shifted.replace("+            // Paper start", "+            // Paper start - preload");
+  expect(changedFeatureTargets({ oldText: FEATURE_PATCH, newText: edited })).toEqual([
+    "net/minecraft/server/Main.java",
+  ]);
+  expect(changedFeatureTargets({ oldText: FEATURE_PATCH, newText: null })).toEqual([
+    "ca/spottedleaf/New.java",
+    "net/minecraft/server/Main.java",
+  ]);
 });
 
 test("recognizes patch paths and their roots", () => {

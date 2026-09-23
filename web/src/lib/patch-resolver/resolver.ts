@@ -7,13 +7,13 @@ import { fuzzyApply } from "./fuzzy-apply";
 import { Decompiler } from "./decompiler/client";
 import { resolveJar, type JarProgress, type JarSource } from "./jar-source";
 import {
+  changedFeatureTargets,
   isFeaturePatchPath,
   isResolvablePatch,
   isSourcePatchPath,
   PatchChainBuilder,
   patchesRootOf,
   sourcePatchTarget,
-  splitFeaturePatch,
   type ChainStep,
   type OuterPatchChange,
 } from "./patch-chain";
@@ -182,25 +182,6 @@ export async function resolveNestedPatches(
   } finally {
     decompiler.close();
   }
-}
-
-function withoutIndexLines(section: string): string {
-  return section.replace(/^index [0-9a-f]+\.\.[0-9a-f]+.*$/gm, "");
-}
-
-/** Targets of a feature patch whose sections differ between the old and new version */
-function changedFeatureTargets(change: OuterPatchChange): string[] {
-  const oldSections = change.oldText === null ? new Map<string, string>() : splitFeaturePatch(change.oldText);
-  const newSections = change.newText === null ? new Map<string, string>() : splitFeaturePatch(change.newText);
-  const targets = new Set<string>();
-  for (const [target, section] of newSections) {
-    const old = oldSections.get(target);
-    if (old === undefined || withoutIndexLines(old) !== withoutIndexLines(section)) targets.add(target);
-  }
-  for (const target of oldSections.keys()) {
-    if (!newSections.has(target)) targets.add(target);
-  }
-  return Array.from(targets).sort();
 }
 
 async function resolveOuterFile(
