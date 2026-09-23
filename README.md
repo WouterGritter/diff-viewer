@@ -16,7 +16,7 @@ Featureful and performant web-based diff viewer.
 
 ### Tech Stack
 
-SvelteKit frontend using tailwindcss for styling, deployed to Cloudflare Pages via GitHub Actions.
+SvelteKit frontend using tailwindcss for styling.
 
 This fork can also be self-hosted with Docker: `docker compose up -d --build` builds the frontend with SvelteKit's
 Node adapter and serves it on port 3000. "Login with GitHub" additionally needs a `GITHUB_CLIENT_SECRET` in the
@@ -62,5 +62,3 @@ Web extension that streamlines opening diffs in the viewer.
 ### Code Style
 
 - The frontend uses ESLint and Prettier for code style. Run `pnpm run format` to reformat and `pnpm run lint` to check style.
-
-[![CI powered by namespace badge](https://papermc.io/assets/misc/namespace-oss-badge.svg?project=diff-viewer)](https://namespace.so/github-actions/?utm_source=oss&utm_campaign=papermc)
