@@ -199,6 +199,18 @@
             }
           />
         {/if}
+        {#if file.type === "text" && hasContent && viewer.contextExpansion.canExpand(file)}
+          <Button.Root
+            class="btn-ghost px-2 py-1 text-left"
+            disabled={viewer.contextExpansion.isLoading(file)}
+            onclick={() => {
+              viewer.contextExpansion.expandAll(file);
+              popoverOpen = false;
+            }}
+          >
+            Expand all lines
+          </Button.Root>
+        {/if}
         {#if resolved && viewer.patchResolver.hasResolvedDiff(file)}
           <Button.Root
             class="btn-ghost px-2 py-1 text-left"

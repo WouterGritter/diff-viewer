@@ -7,6 +7,9 @@ import { formatErrorWithCauses } from "$lib/util";
 /** Number of hidden lines revealed per click, same as GitHub */
 export const EXPAND_STEP = 20;
 
+/** Files with at least this many lines ask for confirmation before expanding fully, as rendering them lags */
+const EXPAND_ALL_CONFIRM_LINES = 1000;
+
 /**
  * - up: reveal the lines directly above the following hunk
  * - down: reveal the lines directly below the preceding hunk
@@ -140,6 +143,19 @@ export function expandPatch(
   return { ...patch, hunks };
 }
 
+/** Returns a copy of the patch with every gap turned into context lines, i.e. the whole file */
+export function expandPatchFully(
+  patch: StructuredPatch,
+  content: FullFileContent,
+  side: FullFileSide,
+): StructuredPatch {
+  // From the last gap backwards, since closing a gap merges the hunks after it
+  for (let gapIdx = patch.hunks.length; gapIdx >= 0; gapIdx--) {
+    patch = expandPatch(patch, content, side, gapIdx, "all");
+  }
+  return patch;
+}
+
 /**
  * Expansion of the unchanged lines hidden between the hunks of text diffs, for files whose full
  * contents can be loaded (see {@link TextFileDetails.fullFile}).
@@ -166,6 +182,12 @@ export class ContextExpansionState {
     return gapSizes(patch, source.side, content ? content.lines.length : null);
   }
 
+  /** Whether the displayed patch of the file still has hidden lines that can be expanded */
+  canExpand(file: TextFileDetails): boolean {
+    const gaps = this.gaps(file, this.getPatch(file));
+    return gaps !== null && gaps.some((size) => size !== 0);
+  }
+
   isLoading(file: TextFileDetails): boolean {
     return this.loading.has(file);
   }
@@ -178,6 +200,22 @@ export class ContextExpansionState {
     const content = await this.load(file);
     if (!content || this.getPatch(file) !== patch) return;
     this.patches.set(file, expandPatch(patch, content, file.fullFile!.side, gapIdx, direction));
+  }
+
+  /** Reveals all hidden lines, showing the whole file */
+  async expandAll(file: TextFileDetails) {
+    const patch = this.getPatch(file);
+    const content = await this.load(file);
+    if (!content || this.getPatch(file) !== patch) return;
+    if (
+      content.lines.length >= EXPAND_ALL_CONFIRM_LINES &&
+      !confirm(
+        `${file.toFile} is a large file with ${content.lines.length} lines. Are you sure you want to expand all of them?`,
+      )
+    ) {
+      return;
+    }
+    this.patches.set(file, expandPatchFully(patch, content, file.fullFile!.side));
   }
 
   private load(file: TextFileDetails): Promise<FullFileContent | null> {

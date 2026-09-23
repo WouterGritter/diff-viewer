@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import {
   EXPAND_STEP,
   expandPatch,
+  expandPatchFully,
   gapSizes,
   matchesPatch,
   splitFullFile,
@@ -95,4 +96,12 @@ test("random expansions keep the patch valid", () => {
       expect(matchesPatch(patch, side, content)).toBe(true);
     }
   }
+});
+
+test("expanding fully shows the whole file", () => {
+  const content = splitFullFile(NEW);
+  const patch = expandPatchFully(patchOf(OLD, NEW), content, "new");
+  expect(patch.hunks.length).toBe(1);
+  expect(gapSizes(patch, "new", 100)).toEqual([0, 0]);
+  expect(applyPatch(OLD, patch)).toBe(NEW);
 });
