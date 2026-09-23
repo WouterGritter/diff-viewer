@@ -26,6 +26,8 @@ export interface TextFileDetails extends CommonFileDetails {
   /** Absent when the full file is not available, e.g. for plain patch files */
   fullFile?: FullFileSource;
   patchHeaderDiffOnly: boolean;
+  /** Placeholder for a binary file, whose actual change is unknown */
+  binary?: boolean;
   addedLines: number;
   removedLines: number;
 }
@@ -122,5 +124,5 @@ export function binaryFileDummyDetails(fromFile: string, toFile: string, status:
       fakeContent = `diff --git a/${fromFile} b/${toFile}\n--- a/${fromFile}\n+++ b/${toFile}\n@@ -1,1 +1,1 @@\n-Cannot show binary file\n+Cannot show binary file`;
       break;
   }
-  return makeTextDetails(fromFile, toFile, status, fakeContent);
+  return { ...makeTextDetails(fromFile, toFile, status, fakeContent), binary: true };
 }

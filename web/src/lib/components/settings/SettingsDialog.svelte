@@ -110,6 +110,21 @@
             {/if}
           </div>
         </SettingsGroup>
+        <SettingsGroup title="Viewed Files">
+          <div class="flex items-center justify-between gap-2 px-2 py-1">
+            <span class="text-em-med">
+              Remembering {viewer.viewedFiles.count.toLocaleString()}
+              {viewer.viewedFiles.count === 1 ? "file" : "files"}
+            </span>
+            <Button.Root
+              class="w-fit shrink-0 rounded-sm btn-fill-neutral px-2 py-1"
+              disabled={viewer.viewedFiles.count === 0}
+              onclick={() => viewer.viewedFiles.clear()}
+            >
+              Clear
+            </Button.Root>
+          </div>
+        </SettingsGroup>
         <SettingsGroup title="Misc.">
           <LabeledCheckbox labelText="Concise nested diffs" bind:checked={globalOptions.omitPatchHeaderOnlyHunks} />
           <LabeledCheckbox labelText="Word diffs" bind:checked={globalOptions.wordDiffs} />

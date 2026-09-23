@@ -28,6 +28,7 @@ import { FileTreeState } from "./components/sidebar/index.svelte";
 import { GlobalOptions } from "./global-options.svelte";
 import { PatchResolverState } from "./components/patch-resolver/index.svelte";
 import { ContextExpansionState } from "./components/diff/context-expansion.svelte";
+import { ViewedFilesStore, viewedKey } from "./viewed-files.svelte";
 
 export const GITHUB_URL_PARAM = "github_url";
 export const PATCH_URL_PARAM = "patch_url";
@@ -39,6 +40,8 @@ export type AddOrRemove = "add" | "remove";
 export interface FileState {
   checked: boolean;
   collapsed: boolean;
+  /** Key under which the viewed state is remembered, see {@link viewedKey} */
+  viewedKey: string | undefined;
 }
 
 export interface Selection {
@@ -243,7 +246,7 @@ export class MultiFileDiffViewerState {
   rawFileDetails: FileDetails[] = $state([]); // Read-only state, as loaded from the diff source
   // Nested patch files (e.g. Paper's *.java.patch) can be resolved against a decompiled jar,
   // in which case their diffs are substituted here
-  readonly patchResolver = new PatchResolverState((count) => this.allocateFileStates(count));
+  readonly patchResolver = new PatchResolverState((files) => this.allocateFileStates(files));
   readonly fileDetails: FileDetails[] = $derived(this.patchResolver.applyTo(this.rawFileDetails));
   // Unchanged lines revealed around hunks, for files whose full contents are available
   readonly contextExpansion = new ContextExpansionState();
@@ -298,6 +301,7 @@ export class MultiFileDiffViewerState {
   diffViewCache: Map<StructuredPatch, TextDiffCachedState> = new Map();
   vlist: VList<FileDetails> | undefined = $state();
   readonly loadingState = new LoadingState();
+  readonly viewedFiles = new ViewedFilesStore();
   readonly layoutState: LayoutState;
 
   // Transient state
@@ -380,12 +384,28 @@ export class MultiFileDiffViewerState {
   }
 
   /** Reserves file states for additional files (resolved patch targets) and returns the first new index */
-  private allocateFileStates(count: number): number {
+  private allocateFileStates(files: FileDetails[]): number {
     const first = this.fileStates.length;
-    for (let i = 0; i < count; i++) {
-      this.fileStates.push({ collapsed: false, checked: false });
-    }
+    this.fileStates.push(...this.makeFileStates(files));
     return first;
+  }
+
+  /** Initial states of newly loaded files, restoring the ones viewed before (possibly through another URL) */
+  private makeFileStates(files: FileDetails[]): FileState[] {
+    const states = files.map((file) => ({
+      // Pre-check files with only header diff
+      checked: file.type === "text" && file.patchHeaderDiffOnly,
+      collapsed: false,
+      viewedKey: viewedKey(file),
+    }));
+    const viewed = this.viewedFiles.restore(states.map((state) => state.viewedKey));
+    for (const state of states) {
+      if (state.viewedKey !== undefined && viewed.has(state.viewedKey)) {
+        state.checked = true;
+        state.collapsed = true;
+      }
+    }
+    return states;
   }
 
   /** Switches between the raw patch diffs and the resolved diffs from the patch resolver */
@@ -429,6 +449,7 @@ export class MultiFileDiffViewerState {
   toggleChecked(idx: number, syncCollapse = false) {
     const fileState = this.fileStates[idx];
     fileState.checked = !fileState.checked;
+    this.viewedFiles.set(fileState.viewedKey, fileState.checked);
     if (syncCollapse) {
       // Collapse on check, expand on uncheck
       fileState.collapsed = fileState.checked;
@@ -608,7 +629,6 @@ export class MultiFileDiffViewerState {
 
       // Load patches
       const tempDetails: FileDetails[] = [];
-      const tempStates = new Map<string, FileState>();
       let lastYield = performance.now();
       let i = 0;
       for await (const details of generator) {
@@ -617,16 +637,6 @@ export class MultiFileDiffViewerState {
 
         // Pushing directly to the main array causes too many signals to update (lag)
         tempDetails.push(details);
-
-        let preChecked = false;
-        if (details.type === "text") {
-          // Pre-check files with only header diff
-          preChecked = details.patchHeaderDiffOnly;
-        }
-        tempStates.set(details.fromFile, {
-          collapsed: false,
-          checked: preChecked,
-        });
 
         if (performance.now() - lastYield > 50 || i % 100 === 0) {
           await tick();
@@ -640,18 +650,12 @@ export class MultiFileDiffViewerState {
 
       tempDetails.sort(compareFileDetails);
 
-      const statesArray: FileState[] = [];
       for (let i = 0; i < tempDetails.length; i++) {
-        const details = tempDetails[i];
-        details.index = i;
-        const state = tempStates.get(details.fromFile);
-        if (state) {
-          statesArray.push(state);
-        }
+        tempDetails[i].index = i;
       }
 
       this.rawFileDetails = tempDetails;
-      this.fileStates = statesArray;
+      this.fileStates = this.makeFileStates(tempDetails);
 
       await tick();
       await animationFramePromise();

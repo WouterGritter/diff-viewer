@@ -25,9 +25,9 @@ export type ResolvedInfo =
  */
 export class PatchResolverState {
   /** Reserves viewer indices (and file states) for resolved entries that do not replace a file one-to-one */
-  private readonly allocateIndices: (count: number) => number;
+  private readonly allocateIndices: (files: FileDetails[]) => number;
 
-  constructor(allocateIndices: (count: number) => number) {
+  constructor(allocateIndices: (files: FileDetails[]) => number) {
     this.allocateIndices = allocateIndices;
   }
 
@@ -141,7 +141,7 @@ export class PatchResolverState {
       for (const entry of file.entries) if (entry.details && entry.index === -1) pending.push(entry);
     }
     if (pending.length === 0) return;
-    let index = this.allocateIndices(pending.length);
+    let index = this.allocateIndices(pending.map((entry) => entry.details!));
     for (const entry of pending) {
       entry.index = index++;
       entry.details!.index = entry.index;
