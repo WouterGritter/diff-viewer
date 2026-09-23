@@ -6,7 +6,7 @@
   import LabeledCheckbox from "$lib/components/LabeledCheckbox.svelte";
   import { MultiFileDiffViewerState } from "$lib/diff-viewer.svelte";
   import { GlobalOptions } from "$lib/global-options.svelte";
-  import { Popover, Button, Checkbox } from "bits-ui";
+  import { Popover, Button, Checkbox, Tooltip } from "bits-ui";
   import { boolAttr } from "runed";
   import { tick } from "svelte";
 
@@ -91,36 +91,64 @@
           : status === "skipped"
             ? "Not resolved"
             : "Failed"}
-  <Popover.Root>
-    <Popover.Trigger
-      title="Patch resolution details"
-      class={[
-        "flex items-center gap-1 rounded-sm px-1.5 whitespace-nowrap",
-        status === "partial" || status === "failed" ? "bg-yellow-500/20" : "bg-neutral-3",
-      ]}
-      onclick={(e) => e.stopPropagation()}
-    >
-      <span class="iconify size-3.5 shrink-0 octicon--package-16" aria-hidden="true"></span>
-      {label}
-    </Popover.Trigger>
-    <Popover.Portal>
-      <Popover.Content class="z-3 max-w-96 rounded-sm border bg-neutral px-3 py-2 text-sm shadow-sm">
-        {#if info.kind === "entry"}
-          <p class="mb-1 font-mono text-xs break-all">{info.entry.target}</p>
-        {/if}
-        {#if notes.length > 0}
-          <ul class="list-disc ps-4 text-em-med">
-            {#each notes as note, i (i)}
-              <li>{note}</li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="text-em-med">All hunks applied exactly.</p>
-        {/if}
-        <Popover.Arrow class="text-edge" />
-      </Popover.Content>
-    </Popover.Portal>
-  </Popover.Root>
+  {@const badgeClass = [
+    "flex items-center gap-1 rounded-sm px-1.5 whitespace-nowrap",
+    status === "partial" || status === "failed" ? "bg-yellow-500/20" : "bg-neutral-3",
+  ]}
+  {#snippet badgeContent()}
+    <span class="iconify size-3.5 shrink-0 octicon--package-16" aria-hidden="true"></span>
+    {label}
+  {/snippet}
+  {#snippet details()}
+    {#if info.kind === "entry"}
+      <p class="mb-1 font-mono text-xs break-all">{info.entry.target}</p>
+    {/if}
+    {#if notes.length > 0}
+      <ul class="list-disc ps-4 text-em-med">
+        {#each notes as note, i (i)}
+          <li>{note}</li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="text-em-med">All hunks applied exactly.</p>
+    {/if}
+  {/snippet}
+  {#if viewer.patchResolver.hasResolvedDiff(file)}
+    <!-- Clicking switches between the resolved and raw diff, the details show on hover instead -->
+    <Tooltip.Root>
+      <Tooltip.Trigger
+        class={[badgeClass, "cursor-pointer hover:brightness-95 dark:hover:brightness-125"]}
+        aria-label={showingResolved ? "Show raw patch diff" : "Show resolved source diff"}
+        onclick={(e) => {
+          e.stopPropagation();
+          viewer.toggleResolvedPatch(file);
+        }}
+        onkeyup={(e) => e.stopPropagation()}
+      >
+        {@render badgeContent()}
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content class="z-50 max-w-96 rounded-sm border bg-neutral px-3 py-2 text-sm shadow-sm">
+          {@render details()}
+          <p class="mt-1 text-xs text-em-med">
+            Click to show the {showingResolved ? "raw patch" : "resolved source"} diff
+          </p>
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  {:else}
+    <Popover.Root>
+      <Popover.Trigger title="Patch resolution details" class={badgeClass} onclick={(e) => e.stopPropagation()}>
+        {@render badgeContent()}
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content class="z-3 max-w-96 rounded-sm border bg-neutral px-3 py-2 text-sm shadow-sm">
+          {@render details()}
+          <Popover.Arrow class="text-edge" />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  {/if}
 {/snippet}
 
 {#snippet collapseToggle()}
@@ -212,15 +240,16 @@
           </Button.Root>
         {/if}
         {#if resolved && viewer.patchResolver.hasResolvedDiff(file)}
-          <Button.Root
-            class="btn-ghost px-2 py-1 text-left"
-            onclick={() => {
-              viewer.toggleResolvedPatch(file);
-              popoverOpen = false;
-            }}
-          >
-            {showingResolved ? "Show raw patch diff" : "Show resolved source diff"}
-          </Button.Root>
+          <LabeledCheckbox
+            labelText="Show resolved diff"
+            bind:checked={
+              () => showingResolved,
+              () => {
+                viewer.toggleResolvedPatch(file);
+                popoverOpen = false;
+              }
+            }
+          />
         {/if}
         {#if baseFileUrl}
           <Button.Root href={baseFileUrl} target="_blank" rel="noopener noreferrer" class="btn-ghost px-2 py-1"
