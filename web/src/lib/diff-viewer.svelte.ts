@@ -318,6 +318,12 @@ export class MultiFileDiffViewerState {
     onDestroy(() => this.clearImages());
 
     onMount(() => {
+      // Start with the sidebar closed on small screens, where it crowds out the diff. Done after
+      // hydration, since the server cannot know the screen size.
+      if (!staticSidebar.current) {
+        this.layoutState.sidebarCollapsed = true;
+      }
+
       let hash = page.url.hash;
       if (hash.startsWith("#")) hash = hash.substring(1);
       if (hash) {

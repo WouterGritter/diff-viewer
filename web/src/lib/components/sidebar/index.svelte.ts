@@ -1,10 +1,11 @@
 import type { FileDetails } from "$lib/file-details";
-import type { TreeNode, TreeState } from "$lib/components/tree/index.svelte";
+import { TreeState, type TreeNode } from "$lib/components/tree/index.svelte";
 import type { MultiFileDiffViewerState } from "$lib/diff-viewer.svelte";
 import { Debounced } from "runed";
 
 export class FileTreeState {
-  tree: TreeState<FileTreeNodeData> | undefined = $state();
+  // Owned here rather than by the sidebar, which is unmounted while collapsed
+  readonly tree: TreeState<FileTreeNodeData>;
   filter: string = $state("");
   readonly roots: TreeNode<FileTreeNodeData>[];
   readonly filterDebounced = new Debounced(() => this.filter, 500);
@@ -16,6 +17,10 @@ export class FileTreeState {
       this.filterDebounced.current
         ? viewer.filteredFileDetails.array.filter((f) => this.filterFile(f))
         : viewer.filteredFileDetails.array,
+    );
+    this.tree = new TreeState(
+      () => this.roots,
+      () => (node) => node.data.type === "file" && this.filterFile(node.data.file),
     );
   }
 

@@ -27,7 +27,7 @@
     const fileTreeElement = document.getElementById("file-tree-file-" + file.index);
     if (fileTreeElement) {
       popoverOpen = false;
-      viewer.fileTree.tree?.expandParents((node) => node.type === "file" && node.file === file);
+      viewer.fileTree.tree.expandParents((node) => node.type === "file" && node.file === file);
       requestAnimationFrame(() => {
         fileTreeElement.focus();
       });

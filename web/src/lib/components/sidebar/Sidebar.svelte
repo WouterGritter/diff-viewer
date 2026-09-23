@@ -3,7 +3,6 @@
 
   import { getFileStatusProps, MultiFileDiffViewerState, staticSidebar } from "$lib/diff-viewer.svelte";
   import Tree from "$lib/components/tree/Tree.svelte";
-  import { type TreeNode } from "$lib/components/tree/index.svelte";
   import { on } from "svelte/events";
   import { createAttachmentKey, type Attachment } from "svelte/attachments";
   import { boolAttr } from "runed";
@@ -11,10 +10,6 @@
 
   const viewer = MultiFileDiffViewerState.get();
   const fileTree = viewer.fileTree;
-
-  function filterFileNode(file: TreeNode<FileTreeNodeData>): boolean {
-    return file.data.type === "file" && fileTree.filterFile(file.data.file);
-  }
 
   function shouldScrollToFile(nodeInteractionEvent: Event): boolean {
     const element: HTMLElement = nodeInteractionEvent.target as HTMLElement;
@@ -128,7 +123,7 @@
   {/if}
   <div class="flex h-full flex-col overflow-y-auto border-t">
     <div class="h-100">
-      <Tree roots={fileTree.roots} filter={filterFileNode} bind:instance={fileTree.tree}>
+      <Tree roots={fileTree.roots} instance={fileTree.tree}>
         {#snippet nodeRenderer({ node, collapsed, toggleCollapse })}
           <div
             role="button"
