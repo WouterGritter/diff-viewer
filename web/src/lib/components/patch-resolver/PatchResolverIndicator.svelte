@@ -1,6 +1,7 @@
 <script lang="ts">
   import { MultiFileDiffViewerState } from "$lib/diff-viewer.svelte";
   import { Button, Popover } from "bits-ui";
+  import ProgressBar from "$lib/components/progress-bar/ProgressBar.svelte";
 
   const viewer = MultiFileDiffViewerState.get();
   const resolver = viewer.patchResolver;
@@ -8,7 +9,19 @@
   let available = $derived(viewer.diffMetadata?.type === "github" && viewer.nestedPatchCount > 0);
 </script>
 
-{#if available && resolver.summary === null}
+{#if available && resolver.running}
+  <Button.Root
+    title={resolver.progress?.message ?? "Resolving patches…"}
+    class="flex items-center gap-1 rounded-sm btn-fill-neutral border px-1 py-0.5 text-sm leading-none"
+    onclick={() => {
+      viewer.openDialog("resolve-patches");
+    }}
+  >
+    <span class="iconify size-3.5 shrink-0 octicon--package-16" aria-hidden="true"></span>
+    Resolving patches…
+    <ProgressBar state={resolver.progressBar} class="h-1.5 w-16" />
+  </Button.Root>
+{:else if available && resolver.summary === null}
   <Button.Root
     title="Decompile the targeted jar and show what the .java.patch changes do to the actual source"
     class="flex items-center gap-1 rounded-sm btn-fill-neutral border px-1 py-0.5 text-sm leading-none"

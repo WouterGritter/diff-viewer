@@ -42,6 +42,7 @@ export class GlobalOptions {
   lineWrap = $state(true);
   omitPatchHeaderOnlyHunks = $state(true);
   sidebarLocation: SidebarLocation = $state("left");
+  autoResolvePatches = $state(false);
   defaultFilters = new DiffFilterDialogState();
 
   private constructor() {
@@ -81,6 +82,7 @@ export class GlobalOptions {
       wordDiff: this.wordDiffs,
       lineWrap: this.lineWrap,
       sidebarLocation: this.sidebarLocation,
+      autoResolvePatches: this.autoResolvePatches,
     };
     if (this.syntaxHighlightingThemeLight !== DEFAULT_THEME_LIGHT) {
       cereal.syntaxHighlightingThemeLight = this.syntaxHighlightingThemeLight;
@@ -142,6 +144,9 @@ export class GlobalOptions {
     }
     if (jsonObject.sidebarLocation !== undefined) {
       this.sidebarLocation = jsonObject.sidebarLocation;
+    }
+    if (typeof jsonObject.autoResolvePatches === "boolean") {
+      this.autoResolvePatches = jsonObject.autoResolvePatches;
     }
   }
 }

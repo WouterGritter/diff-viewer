@@ -46,12 +46,8 @@
   }
 </script>
 
-<Dialog.Root
-  bind:open
-  onOpenChange={(isOpen) => {
-    if (!isOpen && resolver.running) resolver.cancel();
-  }}
->
+<!-- Closing the dialog keeps a run going, its progress is shown next to the diff stats -->
+<Dialog.Root bind:open>
   <Dialog.Portal>
     <Dialog.Overlay
       class="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0"

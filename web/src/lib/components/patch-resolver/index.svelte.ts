@@ -171,8 +171,8 @@ export class PatchResolverState {
    * Tries to detect the Minecraft version the repository targets. Currently understands
    * paperweight-based repositories (`mcVersion` in gradle.properties).
    */
-  async detectVersion(github: GithubDiff) {
-    if (this.detectedVersion !== null) return;
+  async detectVersion(github: GithubDiff): Promise<string | null> {
+    if (this.detectedVersion !== null) return this.detectedVersion;
     try {
       const text = await fetchGithubFileText(
         getGithubToken(),
@@ -189,6 +189,7 @@ export class PatchResolverState {
     } catch (e) {
       console.info("Could not detect Minecraft version from repository", e);
     }
+    return this.detectedVersion;
   }
 
   private jarSource(): JarSource {
@@ -200,15 +201,17 @@ export class PatchResolverState {
 
   /**
    * Runs the resolver for the given diff.
-   * @returns true on success, false when the run failed (an alert has been shown) or was cancelled
+   * @param opts.jar the jar to resolve against, instead of the one selected in the form
+   * @param opts.quiet log failures instead of alerting, for runs the user did not start themselves
+   * @returns true on success, false when the run failed (an alert has been shown unless quiet) or was cancelled
    */
-  async run(github: GithubDiff, files: FileDetails[]): Promise<boolean> {
+  async run(github: GithubDiff, files: FileDetails[], opts?: { jar?: JarSource; quiet?: boolean }): Promise<boolean> {
     if (this.running) return false;
     if (!this.licenseAccepted) {
       alert("Please confirm that you own a license for the software being decompiled.");
       return false;
     }
-    const source = this.jarSource();
+    const source = opts?.jar ?? this.jarSource();
     if (source.kind === "minecraft" && !source.version) {
       alert("Please enter a Minecraft version.");
       return false;
@@ -246,7 +249,7 @@ export class PatchResolverState {
         return false;
       }
       console.error("Failed to resolve patches:", e);
-      alert(formatErrorWithCauses(e));
+      if (!opts?.quiet) alert(formatErrorWithCauses(e));
       return false;
     } finally {
       this.running = false;

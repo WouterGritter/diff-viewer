@@ -9,6 +9,8 @@
   import ShikiThemeSelector from "./ShikiThemeSelector.svelte";
   import DiffFilterDialog from "../diff-filtering/DiffFilterDialog.svelte";
   import { watch } from "runed";
+  import { MultiFileDiffViewerState } from "$lib/diff-viewer.svelte";
+  import { getGithubAvatarUrl, getGithubUsername, loginWithGithub } from "$lib/github-auth.svelte";
   interface Props {
     open?: boolean;
   }
@@ -16,6 +18,9 @@
   let { open = $bindable(false) }: Props = $props();
 
   const globalOptions = GlobalOptions.get();
+  const viewer = MultiFileDiffViewerState.get();
+  const resolver = viewer.patchResolver;
+  let autoResolveAvailable = $derived(viewer.autoResolvePatchesAvailable);
 
   let defaultFiltersDialogOpen = $state(false);
   watch(
@@ -59,12 +64,51 @@
         </Dialog.Close>
       </header>
 
-      <div class="space-y-4 p-4">
+      <div class="space-y-4 overflow-y-auto p-4">
         {@render globalThemeSetting()}
         <SettingsGroup title="Syntax Highlighting">
           <LabeledCheckbox labelText="Enable" bind:checked={globalOptions.syntaxHighlighting} />
           <ShikiThemeSelector mode="light" bind:value={globalOptions.syntaxHighlightingThemeLight} />
           <ShikiThemeSelector mode="dark" bind:value={globalOptions.syntaxHighlightingThemeDark} />
+        </SettingsGroup>
+        <SettingsGroup title="Patch Resolver">
+          <LabeledCheckbox
+            labelText="I own a license for the software being decompiled (e.g. Minecraft: Java Edition) and agree to its terms of use (EULA)"
+            bind:checked={resolver.licenseAccepted}
+          />
+          <LabeledCheckbox
+            labelText="Automatically resolve patches when opening a diff"
+            bind:checked={globalOptions.autoResolvePatches}
+            disabled={!autoResolveAvailable}
+          />
+          {#if !autoResolveAvailable}
+            <p class="flex gap-2 px-2 py-1 text-sm text-em-med">
+              <span class="mt-0.5 iconify shrink-0 octicon--alert-16" aria-hidden="true"></span>
+              <span>
+                Automatic resolving requires confirming the license above and signing in to GitHub, as a single run can
+                exceed the API rate limit for signed out users.
+              </span>
+            </p>
+          {/if}
+          <div class="flex items-center gap-2 px-2 py-1">
+            {#if getGithubUsername()}
+              {@const username = getGithubUsername()!}
+              <img
+                src={getGithubAvatarUrl(username)}
+                alt="GitHub Profile Picture of {username}"
+                class="size-6 shrink-0 rounded-full border shadow-xs"
+              />
+              <span>Signed in to GitHub as {username}</span>
+            {:else}
+              <Button.Root
+                class="flex w-fit flex-row items-center gap-2 rounded-md btn-fill-neutral px-2 py-1"
+                onclick={loginWithGithub}
+              >
+                <span class="iconify shrink-0 text-em-med octicon--sign-in-16"></span>
+                Sign in to GitHub
+              </Button.Root>
+            {/if}
+          </div>
         </SettingsGroup>
         <SettingsGroup title="Misc.">
           <LabeledCheckbox labelText="Concise nested diffs" bind:checked={globalOptions.omitPatchHeaderOnlyHunks} />

@@ -1,7 +1,7 @@
 import type { FileStatus, FileDetails } from "./file-details";
 import type { GithubDiff, GithubDiffResult } from "./github-api";
 import { fetchGithubDiff, parseMultiFilePatchGithub } from "./github-diff";
-import { getGithubToken } from "./github-auth.svelte";
+import { getGithubToken, getGithubUsername } from "./github-auth.svelte";
 import type { GithubDiffSource } from "./github-url";
 import { type StructuredPatch } from "diff";
 import {
@@ -322,6 +322,15 @@ export class MultiFileDiffViewerState {
     });
 
     afterNavigate((nav) => this.afterNavigate(nav));
+
+    // Turn automatic resolving off when a prerequisite goes away (license unchecked, signed out),
+    // so it does not silently start again once the prerequisites are met
+    watch(
+      () => this.autoResolvePatchesAvailable,
+      (available) => {
+        if (!available) this.globalOptions.autoResolvePatches = false;
+      },
+    );
 
     this.registerKeybinds();
   }
@@ -683,6 +692,8 @@ export class MultiFileDiffViewerState {
         });
       }
 
+      this.autoResolvePatches();
+
       return true;
     } catch (e) {
       this.clear(); // Clear any partially loaded state
@@ -695,6 +706,36 @@ export class MultiFileDiffViewerState {
       await animationFramePromise();
 
       this.loadingState.done();
+    }
+  }
+
+  /**
+   * Resolves nested patches right after loading when enabled in the settings. Only runs when the license
+   * has been confirmed and the user is signed in to GitHub (a run can exceed the unauthenticated rate
+   * limit), and the targeted Minecraft version can be detected from the repository.
+   */
+  /** Automatic resolving requires the license confirmation and a GitHub sign-in */
+  get autoResolvePatchesAvailable(): boolean {
+    return this.patchResolver.licenseAccepted && getGithubUsername() !== null;
+  }
+
+  private async autoResolvePatches() {
+    const meta = this.diffMetadata;
+    const resolver = this.patchResolver;
+    if (!this.globalOptions.autoResolvePatches || meta?.type !== "github" || this.nestedPatchCount === 0) return;
+    if (!resolver.licenseAccepted || !getGithubToken()) return;
+
+    const version = await resolver.detectVersion(meta.details);
+    // Another diff may have been loaded, or a run started from the dialog, in the meantime
+    if (!version || this.diffMetadata !== meta || resolver.running || resolver.summary !== null) return;
+
+    const success = await resolver.run(meta.details, this.rawFileDetails, {
+      jar: { kind: "minecraft", version },
+      quiet: true,
+    });
+    // Resolved files replace their patch file, which may have been selected via the URL
+    if (success && this.selection && !this.fileDetails.includes(this.selection.file)) {
+      this.clearSelection();
     }
   }
 
