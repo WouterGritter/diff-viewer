@@ -7,6 +7,7 @@
   const resolver = viewer.patchResolver;
 
   let available = $derived(viewer.diffMetadata?.type === "github" && viewer.nestedPatchCount > 0);
+  let detailsOpen = $state(false);
 </script>
 
 {#if available && resolver.running}
@@ -46,7 +47,7 @@
       <span class="iconify size-3.5 shrink-0 octicon--package-16" aria-hidden="true"></span>
       {resolver.showResolved ? "Resolved" : "Raw patches"}
     </Button.Root>
-    <Popover.Root>
+    <Popover.Root bind:open={detailsOpen}>
       <Popover.Trigger
         title="Patch resolution details"
         class="flex items-center rounded-r-sm btn-fill-neutral border-l px-1 py-0.5 data-[state=open]:bg-(--btn-hover)"
@@ -69,6 +70,7 @@
           <Button.Root
             class="mt-2 rounded-md btn-fill-neutral px-2 py-1"
             onclick={() => {
+              detailsOpen = false;
               viewer.openDialog("resolve-patches");
             }}>Resolve again…</Button.Root
           >
