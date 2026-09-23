@@ -6,7 +6,7 @@
   import LabeledCheckbox from "$lib/components/LabeledCheckbox.svelte";
   import { MultiFileDiffViewerState } from "$lib/diff-viewer.svelte";
   import { GlobalOptions } from "$lib/global-options.svelte";
-  import { Popover, Button } from "bits-ui";
+  import { Popover, Button, Checkbox } from "bits-ui";
   import { boolAttr } from "runed";
   import { tick } from "svelte";
 
@@ -35,6 +35,7 @@
   }
 
   let patchHeaderDiffOnly = $derived(file.type === "text" && file.patchHeaderDiffOnly);
+  let hasContent = $derived(!patchHeaderDiffOnly || !globalOptions.omitPatchHeaderOnlyHunks);
 
   let resolved = $derived(viewer.patchResolver.get(file));
   let showingResolved = $derived(viewer.patchResolver.isShowingResolved(file));
@@ -148,6 +149,30 @@
   </button>
 {/snippet}
 
+{#snippet viewedToggle()}
+  <Checkbox.Root
+    title={viewer.fileStates[file.index].checked ? "Mark file as not viewed" : "Mark file as viewed"}
+    bind:checked={() => viewer.fileStates[file.index].checked, () => viewer.toggleChecked(file.index, true)}
+    class="flex cursor-pointer items-center gap-1 rounded-sm btn-ghost px-1.5 whitespace-nowrap"
+    onclick={(e) => e.stopPropagation()}
+    onkeyup={(e) => e.stopPropagation()}
+  >
+    {#snippet children({ checked })}
+      <span
+        class="relative size-3.5 shrink-0 rounded-sm border bg-neutral transition-colors ease-in-out data-[state=checked]:bg-blue-500"
+        data-state={checked ? "checked" : "unchecked"}
+      >
+        <span
+          class="absolute top-1/2 left-1/2 iconify size-3 -translate-x-1/2 -translate-y-1/2 bg-white opacity-0 transition-opacity ease-in-out octicon--check-16 data-[state=checked]:opacity-100"
+          aria-hidden="true"
+          data-state={checked ? "checked" : "unchecked"}
+        ></span>
+      </span>
+      Viewed
+    {/snippet}
+  </Checkbox.Root>
+{/snippet}
+
 {#snippet actionsPopover()}
   <Popover.Root bind:open={popoverOpen}>
     <Popover.Trigger
@@ -162,16 +187,18 @@
         class="z-3 flex flex-col overflow-hidden rounded-sm border bg-neutral text-sm shadow-sm select-none"
       >
         <Button.Root onclick={showInFileTree} class="btn-ghost px-2 py-1">Show in file tree</Button.Root>
-        <LabeledCheckbox
-          labelText="File viewed"
-          bind:checked={
-            () => viewer.fileStates[file.index].checked,
-            () => {
-              viewer.toggleChecked(file.index);
-              popoverOpen = false;
+        {#if hasContent}
+          <LabeledCheckbox
+            labelText="File viewed"
+            bind:checked={
+              () => viewer.fileStates[file.index].checked,
+              () => {
+                viewer.toggleChecked(file.index);
+                popoverOpen = false;
+              }
             }
-          }
-        />
+          />
+        {/if}
         {#if resolved && viewer.patchResolver.hasResolvedDiff(file)}
           <Button.Root
             class="btn-ghost px-2 py-1 text-left"
@@ -222,8 +249,11 @@
     {#if resolved && viewer.patchResolver.showResolved}
       {@render resolvedBadge(resolved)}
     {/if}
+    {#if hasContent}
+      {@render viewedToggle()}
+    {/if}
     {@render actionsPopover()}
-    {#if !patchHeaderDiffOnly || !globalOptions.omitPatchHeaderOnlyHunks || file.type === "image"}
+    {#if hasContent}
       {@render collapseToggle()}
     {/if}
   </div>

@@ -426,12 +426,12 @@ export class MultiFileDiffViewerState {
     }
   }
 
-  toggleChecked(idx: number) {
+  toggleChecked(idx: number, syncCollapse = false) {
     const fileState = this.fileStates[idx];
     fileState.checked = !fileState.checked;
-    if (fileState.checked) {
-      // Auto-collapse on check
-      fileState.collapsed = true;
+    if (syncCollapse) {
+      // Collapse on check, expand on uncheck
+      fileState.collapsed = fileState.checked;
     }
   }
 
